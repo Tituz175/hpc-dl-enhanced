@@ -1,0 +1,55 @@
+[project]
+name = "hpc-dl-enhanced"
+version = "0.1.0"
+description = "Deep Learning Enhanced Prediction of Execution Time, Memory Usage, and Power Consumption in Heterogeneous HPC Systems"
+requires-python = ">=3.12,<3.13"  # numba/llvmlite (via shap) lack working 3.13 wheels as of this writing
+dependencies = [
+    # Core data handling
+    "pandas",
+    "numpy",
+    "pyarrow",          # parquet I/O for F-DATA/PM100
+
+    # Classical ML (Decision #14)
+    "scikit-learn",
+    "xgboost",
+    "lightgbm",
+
+    # Deep learning (Decisions #12, #13) — CUDA 13.0 build, see [tool.uv.sources] below
+    "torch",
+
+    # Hyperparameter tuning (Decision #5)
+    "optuna",
+
+    # Interpretability (Decision #9)
+    "shap",
+    "numba>=0.60",  # without this, uv's resolver picks an ancient numba (0.53.1) whose
+                     # metadata claims unbounded numpy compatibility instead of a modern,
+                     # correctly-capped one — see commit message for the full diagnosis
+
+    # Stats (Decision #6)
+    "scipy",
+
+    # Plotting (Track B5)
+    "matplotlib",
+    "seaborn",
+
+    # Config
+    "pyyaml",
+
+    # Notebooks
+    "jupyterlab",
+    "ipykernel",
+]
+
+[tool.uv]
+package = false  # this is a research/experiment repo, not an installable library
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu130" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
