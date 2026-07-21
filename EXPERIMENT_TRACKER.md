@@ -15,7 +15,8 @@ Last updated: 2026-07-21
 | Months | Milestone | Status | Target Date | Actual Date | Notes |
 |---|---|---|---|---|---|
 | 1–2 | Git repo set up (local) | Done | 2026-07-21 | 2026-07-21 | Root commit `d709812`. Remote not yet created — `gh` CLI unavailable on this machine; create manually on GitHub/GitLab (private) and add as `origin` |
-| 1–2 | Repo scaffolding (src/ package, 9 notebooks, requirements.txt, .gitignore) | Done | 2026-07-21 | 2026-07-21 | src/ modules are structural stubs (raise NotImplementedError) pending real data |
+| 1–2 | Repo scaffolding (src/ package, 9 notebooks, .gitignore) | Done | 2026-07-21 | 2026-07-21 | src/ modules are structural stubs (raise NotImplementedError) pending real data |
+| 1–2 | uv-managed environment (Python 3.12, pyproject.toml + uv.lock) | Done | 2026-07-21 | 2026-07-21 | torch 2.13.0+cu130 confirmed detecting the RTX 3090. Jupyter kernel `hpc-dl-enhanced` registered. Note: pinned Python to 3.12 (not 3.13) since numba/llvmlite lack working 3.13 support; also needed an explicit `numba>=0.60` constraint to stop uv's resolver from picking a broken ancient numba — see commit `bcc6149` |
 | 1–2 | F-DATA + PM100 acquired, EDA done | Not Started | | | Includes temporal-drift trend plot (Decision #18) |
 | 1–2 | Tier A/B feature split + sanity-check assertions | Not Started | | | Decisions #1, #19 |
 | 1–2 | Chronological split implemented, target transforms decided | Not Started | | | Decisions #2, #3 |
