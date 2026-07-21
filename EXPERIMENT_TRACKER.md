@@ -10,6 +10,18 @@ Last updated: 2026-07-21
 
 ---
 
+## ⚠️ Sample-size reminder
+
+Notebooks 01 and 02 currently run on `SAMPLE_SIZE = 5000` (a plain random subsample) — this is a **dev-only speed setting**, not the experiment. Per Decision #10:
+
+- **Notebooks 05-07 (classical ML, DL, Hybrid model training)**: step `SAMPLE_SIZE` up to **1–5 million rows** (stratified by job-size/chronological, not plain random) before any results from these are meaningful for hyperparameter search.
+- **Final reported thesis numbers**: `SAMPLE_SIZE = None` — the full ~24M F-DATA rows (compute permitting) and the full ~231K PM100 rows (already always used in full).
+- PM100 never needs subsampling — it's small enough to use in full throughout.
+
+I'll flag this explicitly again when we reach notebook 05, but it's recorded here too so it isn't lost either way.
+
+---
+
 ## Milestone Status
 
 | Months | Milestone | Status | Target Date | Actual Date | Notes |
@@ -19,7 +31,7 @@ Last updated: 2026-07-21
 | 1–2 | uv-managed environment (Python 3.12, pyproject.toml + uv.lock) | Done | 2026-07-21 | 2026-07-21 | torch 2.13.0+cu130 confirmed detecting the RTX 3090. Jupyter kernel `hpc-dl-enhanced` registered. Note: pinned Python to 3.12 (not 3.13) since numba/llvmlite lack working 3.13 support; also needed an explicit `numba>=0.60` constraint to stop uv's resolver from picking a broken ancient numba — see commit `bcc6149` |
 | 1–2 | F-DATA + PM100 acquired, EDA done | In Progress | | | Data placed in `data/raw/{fdata,pm100}/`. **Only 1 of 38 F-DATA monthly files present** (`fugaku_22_01.parquet`, Jan 2022) — remaining months still needed before chronological split / rolling-window drift check / full-scale runs are meaningful. Notebook 01 executes clean end-to-end on a 5000-row sample (`SAMPLE_SIZE` config); full-scale run still pending once more months arrive. Real schemas confirmed against official docs: F-DATA `docs/feature_list.md`, PM100 `documentation/job_features.md` — re-verified PM100 has zero FLOP/performance-counter fields against the actual loaded data too, not just docs |
 | 1–2 | Tier A/B feature split + sanity-check assertions | Done | 2026-07-21 | 2026-07-21 | `src/features.py` grounded in official column docs, validated against real data (every listed column exists, every real column accounted for). Decisions #1, #19 |
-| 1–2 | Chronological split implemented, target transforms decided | Not Started | | | Decisions #2, #3 |
+| 1–2 | Chronological split implemented, target transforms decided | In Progress | | | log1p transform implemented + round-trip-verified on all 6 targets (Decision #3, notebook 02, commit `6087afc`). Chronological split itself still not implemented — needs the remaining 37 F-DATA months first |
 | 1–2 | NPB/Rodinia microbenchmark validation (RTX 3090) | Not Started | | | Decision #16, runs independently of trace pipeline |
 | 2–3 | Naive baseline predictor | Not Started | | | Decision #17 |
 | 2–3 | Analytical baselines: F-DATA Roofline + PM100 power model | Not Started | | | Decision #15 |
@@ -39,7 +51,7 @@ All 9 notebooks are scaffolded (title cell + `src` imports) as of 2026-07-21 —
 | # | Notebook | Status | Decisions Covered | Notes |
 |---|---|---|---|---|
 | 01 | `data_acquisition_eda.ipynb` | In Progress | EDA groundwork | Runs clean end-to-end on a 5000-row sample (commit `d2518d4`). Pending: full-scale run once remaining 37 F-DATA months arrive |
-| 02 | `feature_engineering.ipynb` | Not Started | #1, #2, #3, #4, #7 | Scaffolded |
+| 02 | `feature_engineering.ipynb` | Done (dev-sample) | #1, #2, #3, #4, #7 | Runs clean end-to-end on the 5000-row sample (commit `6087afc`): failed-job exclusion, Tier A/B re-validation, embedding PCA, rolling-stat features, log1p round-trip — all pass. Will need re-running once `SAMPLE_SIZE` steps up (see sample-size reminder below) |
 | 03 | `analytical_baselines.ipynb` | Not Started | #15 | Scaffolded. F-DATA Roofline + PM100 calibrated power model |
 | 04 | `microbenchmark_validation.ipynb` | Not Started | #16 | Scaffolded. Independent of main data pipeline |
 | 05 | `classical_ml_baselines.ipynb` | Not Started | #5, #14 | Scaffolded. RF, XGBoost, LightGBM |
@@ -54,13 +66,13 @@ All 9 notebooks are scaffolded (title cell + `src` imports) as of 2026-07-21 —
 
 | # | Decision | Status | Notebook | Notes |
 |---|---|---|---|---|
-| 1 | Tier A/B feature-leakage split | In Progress | 01, 02 | Column classification done + validated against real data/docs (`src/features.py`); historical rolling-stat features (e.g. user's mean duration over last N jobs) not yet built. Still needs advisor sign-off — see WRITING_TRACKER |
+| 1 | Tier A/B feature-leakage split | Done (dev-sample) | 01, 02 | Column classification + historical rolling-stat feature (`add_user_rolling_stat`, strictly-past-only via shift(1)) both implemented and validated on real data. Re-validated after failed-job exclusion too (Decision #19 discipline). Still needs advisor sign-off — see WRITING_TRACKER |
 | 2 | Target definition (used memory, fallback allocated) | Done | 01 | Confirmed: PM100 has no "used" field at all (`mem_alloc` always the fallback case, not a choice) |
-| 3 | Target skew (log1p transform) | Not Started | 02 | Distributions visualized in notebook 01; actual transform not yet applied to training data |
-| 4 | Failed/cancelled job exclusion | Not Started | 02 | |
+| 3 | Target skew (log1p transform) | Done (dev-sample) | 02 | `transform_target`/`inverse_transform_target` implemented, round-trip verified on all 6 targets (both datasets) |
+| 4 | Failed/cancelled job exclusion | Done (dev-sample) | 02 | `filter_completed_jobs` implemented. Real exclusion rates: F-DATA 5.1%, PM100 21.0% (PM100 notably higher — worth a mention in the thesis) |
 | 5 | Fixed tuning budget across model families | Not Started | 05, 06, 07 | |
 | 6 | Multi-seed + paired significance testing | Not Started | 08 | |
-| 7 | SBert embedding dimensionality reduction | Not Started | 02 | |
+| 7 | SBert embedding dimensionality reduction | Done (dev-sample) | 02 | `reduce_fdata_embedding` (PCA, 10 components) implemented and validated. F-DATA only — PM100 has no embedding field |
 | 8 | MAPE + stratified error breakdowns | Not Started | 08 | |
 | 9 | SHAP + permutation/integrated-gradients interpretability | Not Started | 09 | |
 | 10 | F-DATA stratified subsample → full-scale strategy | In Progress | 01, all training notebooks | `SAMPLE_SIZE` config added to notebook 01 (currently random 5000-row sample, not yet the stratified-by-job-size/chronological version described in the decision) |
@@ -72,7 +84,7 @@ All 9 notebooks are scaffolded (title cell + `src` imports) as of 2026-07-21 —
 | 16 | Microbenchmark validation side-study | Not Started | 04 | |
 | 17 | Naive/trivial baseline predictor | Not Started | 05 (or its own step) | |
 | 18 | Rolling-window temporal-drift check (F-DATA) | Not Started | 08 | |
-| 19 | Sanity-check assertions on pipeline code | In Progress | 01, 02, 03 | `assert_no_tier_leakage` implemented and passing on real data for both datasets; `expm1_round_trip_check` exists in `src/metrics.py` but not yet exercised |
+| 19 | Sanity-check assertions on pipeline code | Done (dev-sample) | 01, 02, 03 | `assert_no_tier_leakage` and `expm1_round_trip_check` both implemented and passing on real data for both datasets, re-checked after every transformation step |
 | 20 | Feature ablation study alongside SHAP | Not Started | 09 | |
 
 ---
@@ -84,6 +96,8 @@ Worth keeping visible since they'll recur in every notebook that touches these c
 - **F-DATA's `embedding` column** is a 384-dim `numpy.ndarray` per row (object dtype). Never call generic `describe()`/uniqueness-style operations on it directly — pandas tries to hash/compare unhashable arrays and grinds for a very long time instead of erroring cleanly. Exclude it explicitly first.
 - **PM100's `node_power_consumption`** (and likely `mem_power_consumption`, `cpu_power_consumption`) is a per-job **time series** (20-second-interval samples, variable length per job), not a scalar — this is the genuine intra-job sequence data Decision #13 relies on for LSTM/TCN. Any scalar treatment of it (plots, describe, simple stats) needs an explicit per-job reduction (e.g. mean) first; the raw array is what feeds the sequence models later.
 - **PM100 has no "used" memory field at all** — only `mem_req`/`mem_alloc` — so its memory target is always the Decision #2 fallback (`mem_alloc`), never a choice between used/allocated the way F-DATA's `mmszu`/`msza` are.
+- **PM100's failure rate (21.0%) is notably higher than F-DATA's (5.1%)** in the dev-sample — worth stating explicitly in the thesis's data-characterization section rather than treating both datasets as symmetric on this axis.
+- **F-DATA's `avgpcon` (power) max value looks high** (~230,000 in the dev sample) for what the docs call "average node power consumption" — plausibly summed across all allocated nodes for multi-node jobs rather than truly per-node, or a different unit scale than expected. Not yet investigated — check during notebook 03 (Roofline/power-model work) before reporting power numbers at face value.
 
 ---
 
