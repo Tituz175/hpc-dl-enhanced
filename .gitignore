@@ -1,0 +1,51 @@
+# Data (raw and derived) — too large for git, never commit
+data/raw/
+data/processed/
+data/interim/
+*.parquet
+*.csv
+*.h5
+*.hdf5
+
+# Model checkpoints and experiment artifacts
+checkpoints/
+models/*.pt
+models/*.pth
+models/*.pkl
+models/*.joblib
+outputs/
+mlruns/
+
+# Jupyter
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment / secrets
+.env
+*.env.local
+
+# OS/editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
