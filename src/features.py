@@ -17,7 +17,9 @@ Column classifications below are grounded in the official documentation:
 - PM100:  https://github.com/francescoantici/PM100-data (documentation/job_features.md)
 not guessed from abbreviated names.
 """
+import numpy as np
 import pandas as pd
+from sklearn.decomposition import PCA
 
 # --- F-DATA -------------------------------------------------------------
 # Targets (not features): duration (execution time), mmszu (memory used,
@@ -133,3 +135,92 @@ def assert_no_tier_leakage(feature_columns: list[str], tier: str, dataset: str) 
     other = tier_b if tier == "A" else tier_a
     leaked = set(feature_columns) & set(other)
     assert not leaked, f"Tier leakage detected in Tier {tier} features ({dataset}): {leaked}"
+
+
+# --- Failed/cancelled job exclusion (Decision #4) --------------------------
+# F-DATA's "exit state" is a clean binary (completed/failed). PM100's
+# job_state has 6 values (COMPLETED, FAILED, CANCELLED, TIMEOUT,
+# OUT_OF_MEMORY, NODE_FAIL) — only COMPLETED reflects real workload
+# behavior; the rest are artifacts of the job not finishing normally.
+
+_COMPLETED_FILTER: dict[str, tuple[str, str]] = {
+    "fdata": ("exit state", "completed"),
+    "pm100": ("job_state", "COMPLETED"),
+}
+
+
+def filter_completed_jobs(df: pd.DataFrame, dataset: str) -> pd.DataFrame:
+    """Exclude non-completed jobs (Decision #4). Returns a copy; also
+    logs the exclusion rate since the thesis needs to report it, not just
+    silently drop rows."""
+    column, value = _COMPLETED_FILTER[dataset]
+    kept = df[df[column] == value].copy()
+    excluded_frac = 1 - len(kept) / len(df) if len(df) else 0.0
+    print(f"[{dataset}] excluded {excluded_frac:.1%} of jobs as non-completed "
+          f"({len(df) - len(kept)} / {len(df)})")
+    return kept
+
+
+# --- Embedding dimensionality reduction (Decision #7) -----------------------
+# F-DATA only — PM100 has no job-name embedding field. Tree-based models
+# get a handful of PCA components; FNN/LSTM/TCN can still use the full
+# 384-dim embedding directly (this function doesn't replace that option,
+# it's specifically for the tree-based-model feature matrix).
+
+def reduce_fdata_embedding(df: pd.DataFrame, n_components: int = 10) -> pd.DataFrame:
+    """PCA-reduce F-DATA's 384-dim `embedding` column to `n_components`
+    columns named emb_pc_0..N-1. Returns a new DataFrame with those columns
+    only (index-aligned with `df`), to be concatenated onto a Tier A/B
+    feature matrix in place of the raw embedding column."""
+    stacked = np.stack(df["embedding"].to_numpy())
+    n_components = min(n_components, stacked.shape[0], stacked.shape[1])
+    components = PCA(n_components=n_components, random_state=0).fit_transform(stacked)
+    columns = [f"emb_pc_{i}" for i in range(n_components)]
+    return pd.DataFrame(components, columns=columns, index=df.index)
+
+
+# --- Historical rolling-stat features (Tier A) ------------------------------
+# The plan's example: "that user's mean duration over their last N jobs."
+# Computed using only STRICTLY PAST jobs (shift(1) before rolling) so it
+# can never leak the current job's own outcome — this is itself part of
+# what keeps Tier A genuinely submission-time-only.
+#
+# With only 1 of F-DATA's 38 months present (and a small dev sample), most
+# users won't have many prior jobs to compute this from yet — expect sparse/
+# noisy values until more months are loaded (see EXPERIMENT_TRACKER.md).
+
+_ROLLING_CONFIG: dict[str, dict[str, str]] = {
+    "fdata": {"user_col": "usr", "time_col": "adt"},
+    "pm100": {"user_col": "user_id", "time_col": "submit_time"},
+}
+
+
+def add_user_rolling_stat(
+    df: pd.DataFrame, dataset: str, target_col: str, window: int = 5
+) -> pd.DataFrame:
+    """Add a `{target_col}_user_rolling_mean` column: each user's mean
+    `target_col` over their previous `window` jobs (strictly before the
+    current one). Returns a copy of `df` with the new column added."""
+    cfg = _ROLLING_CONFIG[dataset]
+    out = df.sort_values([cfg["user_col"], cfg["time_col"]]).copy()
+    grouped = out.groupby(cfg["user_col"])[target_col]
+    out[f"{target_col}_user_rolling_mean"] = (
+        grouped.transform(lambda s: s.shift(1).rolling(window, min_periods=1).mean())
+    )
+    return out.sort_index()
+
+
+# --- Target transforms (Decision #3) ----------------------------------------
+# Heavy-tailed targets (execution time, memory, power) are trained on in
+# log-space; metrics get reported in both log-space and back-transformed
+# real units. Kept as named functions (not inline np.log1p/np.expm1) so the
+# round-trip sanity check (Decision #19, src/metrics.py) checks the exact
+# functions actually used in the pipeline.
+
+def transform_target(values: np.ndarray) -> np.ndarray:
+    """log1p — requires non-negative input; targets here (time/memory/power) always are."""
+    return np.log1p(values)
+
+
+def inverse_transform_target(values: np.ndarray) -> np.ndarray:
+    return np.expm1(values)
