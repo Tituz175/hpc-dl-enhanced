@@ -23,8 +23,28 @@ from sklearn.decomposition import PCA
 
 # --- F-DATA -------------------------------------------------------------
 # Targets (not features): duration (execution time), mmszu (memory used,
-# per Decision #2's primary choice), avgpcon (power — average node power
-# consumption). minpcon/maxpcon are auxiliary, not the primary power target.
+# per Decision #2's primary choice), avgpcon (power). minpcon/maxpcon are
+# auxiliary, not the primary power target.
+#
+# IMPORTANT — avgpcon/minpcon/maxpcon semantics (verified against real data,
+# not just the column docs): despite being named "average/min/max NODE
+# power consumption", these are actually the JOB's TOTAL power (summed
+# across all allocated nodes at each time-sample), then min/avg/max'd over
+# the job's duration — NOT a single node's power. Verified two ways: (1)
+# avgpcon correlates 0.98 with nnuma (nodes allocated); single-node jobs
+# (nnuma==1) show avgpcon in [39.6, 149.9] W, matching known A64FX
+# per-node power figures, while multi-node jobs scale up proportionally.
+# (2) Unit cross-check: econ / (avgpcon * duration) ≈ 1/3600 consistently
+# across the sample, confirming avgpcon is genuine Watts, duration is
+# seconds, and econ is Watt-hours (W·s / 3600 = Wh) — the units are
+# self-consistent, nothing is broken.
+#
+# This makes F-DATA's power target semantically DIFFERENT from PM100's
+# node_power_consumption (which is genuinely per-node, per Decision #15) —
+# not just a different unit, a different physical quantity (whole-job
+# total vs. single-node). Footnote this alongside the existing
+# Roofline-vs-power-model comparability caveat wherever F-DATA and PM100
+# power numbers appear in the same table/figure.
 
 FDATA_TIER_A_COLUMNS: list[str] = [
     "usr",          # username — for historical rolling stats
