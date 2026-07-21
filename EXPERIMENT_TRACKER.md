@@ -14,7 +14,8 @@ Last updated: 2026-07-21
 
 | Months | Milestone | Status | Target Date | Actual Date | Notes |
 |---|---|---|---|---|---|
-| 1–2 | Git repo + remote set up | Not Started | | | First implementation action |
+| 1–2 | Git repo set up (local) | Done | 2026-07-21 | 2026-07-21 | Root commit `d709812`. Remote not yet created — `gh` CLI unavailable on this machine; create manually on GitHub/GitLab (private) and add as `origin` |
+| 1–2 | Repo scaffolding (src/ package, 9 notebooks, requirements.txt, .gitignore) | Done | 2026-07-21 | 2026-07-21 | src/ modules are structural stubs (raise NotImplementedError) pending real data |
 | 1–2 | F-DATA + PM100 acquired, EDA done | Not Started | | | Includes temporal-drift trend plot (Decision #18) |
 | 1–2 | Tier A/B feature split + sanity-check assertions | Not Started | | | Decisions #1, #19 |
 | 1–2 | Chronological split implemented, target transforms decided | Not Started | | | Decisions #2, #3 |
@@ -32,17 +33,19 @@ Last updated: 2026-07-21
 
 ## Notebook Status
 
+All 9 notebooks are scaffolded (title cell + `src` imports) as of 2026-07-21 — "Not Started" below refers to actual analysis content, not file existence.
+
 | # | Notebook | Status | Decisions Covered | Notes |
 |---|---|---|---|---|
-| 01 | `data_acquisition_eda.ipynb` | Not Started | EDA groundwork | |
-| 02 | `feature_engineering.ipynb` | Not Started | #1, #2, #3, #4, #7 | |
-| 03 | `analytical_baselines.ipynb` | Not Started | #15 | F-DATA Roofline + PM100 calibrated power model |
-| 04 | `microbenchmark_validation.ipynb` | Not Started | #16 | Independent of main data pipeline |
-| 05 | `classical_ml_baselines.ipynb` | Not Started | #5, #14 | RF, XGBoost, LightGBM |
-| 06 | `deep_learning_models.ipynb` | Not Started | #12, #13 | FNN, LSTM, TCN |
-| 07 | `hybrid_model.ipynb` | Not Started | #15 (Hybrid) | Power-only for PM100 |
-| 08 | `evaluation_and_statistics.ipynb` | Not Started | #6, #8, #18 | |
-| 09 | `interpretability.ipynb` | Not Started | #9, #20 | |
+| 01 | `data_acquisition_eda.ipynb` | Not Started | EDA groundwork | Scaffolded |
+| 02 | `feature_engineering.ipynb` | Not Started | #1, #2, #3, #4, #7 | Scaffolded |
+| 03 | `analytical_baselines.ipynb` | Not Started | #15 | Scaffolded. F-DATA Roofline + PM100 calibrated power model |
+| 04 | `microbenchmark_validation.ipynb` | Not Started | #16 | Scaffolded. Independent of main data pipeline |
+| 05 | `classical_ml_baselines.ipynb` | Not Started | #5, #14 | Scaffolded. RF, XGBoost, LightGBM |
+| 06 | `deep_learning_models.ipynb` | Not Started | #12, #13 | Scaffolded. FNN, LSTM, TCN |
+| 07 | `hybrid_model.ipynb` | Not Started | #15 (Hybrid) | Scaffolded. Power-only for PM100 |
+| 08 | `evaluation_and_statistics.ipynb` | Not Started | #6, #8, #18 | Scaffolded |
+| 09 | `interpretability.ipynb` | Not Started | #9, #20 | Scaffolded |
 
 ---
 
