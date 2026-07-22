@@ -98,7 +98,7 @@ PM100_TIER_A_COLUMNS: list[str] = [
     "user_id", "group_id", "partition", "qos", "priority",
     "submit_time", "eligible_time", "time_limit",
     "num_cores_req", "num_nodes_req", "num_gpus_req", "mem_req",
-    "cores_per_task", "num_tasks", "shared", "req_switch",
+    "cores_per_task", "num_tasks", "shared",
     "num_tasks_missing",  # promoted after feature vetting — see below
 ]
 
@@ -131,26 +131,60 @@ PM100_TIER_A_COLUMNS: list[str] = [
 #   users (top-5 share = 47.1%, not dominated by one) — PROMOTED to
 #   active Tier A.
 #
-# Both raw columns (req_nodes, threads_per_core) and all three derived
-# flags are preserved in the processed dataset regardless of this split —
-# only num_tasks_missing is added to the active PM100_TIER_A_COLUMNS list.
-# This concentration check generalizes: both datasets are dominated by a
-# handful of power users (PM100's top-5 users = 45.4% of all jobs, top-10
-# = 59.9%; F-DATA's top-5 = 41.4% in a 5-file sample) — worth the same
-# scrutiny for any future derived feature, not just these three.
+# RETROACTIVE AUDIT (2026-07-22): the same concentration check was run
+# against columns already sitting in PM100_TIER_A_COLUMNS before this
+# vetting process existed, not just the three new candidates above.
+# req_switch failed it just as badly as the excluded candidates: only 13
+# non-zero occurrences across 180,310 completed jobs, and ALL 13 from a
+# single user (100% concentration) — moved to reserved below. shared and
+# the minority categories of qos/partition were also checked: shared has
+# no comparable rare-value problem (its two populated categories have
+# 149,226 and 31,084 jobs — nowhere near single-user territory); qos/
+# partition's smallest categories are either negligible in size (n=2) or
+# only moderately concentrated (partition's smallest category: n=111,
+# top-1 user share 55%) — both are legitimate multi-valued scheduling
+# categoricals rather than purpose-built rare binary flags, so ordinary
+# small-category noise is expected and not treated the same way.
+# F-DATA's analogous check (jobenv_req, its only near-constant Tier A
+# column) found real but much milder concentration: the minority category
+# (1,088 of ~3.66M jobs in a 5-file sample) spans 21 users, top-1 share
+# 39.2% — above F-DATA's own baseline (16.0%) but far short of PM100's
+# excluded flags. Left active for now; worth re-checking once more months
+# are available.
+#
+# Both raw columns (req_nodes, threads_per_core, req_switch) and all four
+# derived flags are preserved in the processed dataset regardless of this
+# split — only num_tasks_missing is added to the active
+# PM100_TIER_A_COLUMNS list. This concentration check generalizes: both
+# datasets are dominated by a handful of power users (PM100's top-5 users
+# = 45.4% of all jobs, top-10 = 59.9%; F-DATA's top-5 = 41.4% in a 5-file
+# sample) — worth the same scrutiny for any future derived feature, not
+# just these three.
+#
+# Split-strategy note: PM100's top-5 heaviest users are active across
+# 97-100% of the full 159-day dataset span (one exception at 76%,
+# starting a month in but continuing to the end) — a chronological
+# train/test split would not strand any of them entirely in one side of
+# the split. This has only been checked for PM100; F-DATA spans 38
+# months rather than 6, and the same check has not yet been run there.
 
-PM100_RESERVED_COLUMNS: list[str] = ["req_nodes", "threads_per_core", "node_pinned", "threads_per_core_set"]
+PM100_RESERVED_COLUMNS: list[str] = [
+    "req_nodes", "threads_per_core", "req_switch",
+    "node_pinned", "threads_per_core_set", "req_switch_set",
+]
 
 
 def add_pm100_derived_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    """Binary indicators for PM100's missing-by-design/incomplete fields.
-    Returns a copy of df with node_pinned, threads_per_core_set, and
-    num_tasks_missing added. Only num_tasks_missing belongs in the active
-    Tier A feature set — node_pinned and threads_per_core_set are
-    computed and preserved but reserved (see module comment above)."""
+    """Binary indicators for PM100's missing-by-design/incomplete/
+    near-constant fields. Returns a copy of df with node_pinned,
+    threads_per_core_set, req_switch_set, and num_tasks_missing added.
+    Only num_tasks_missing belongs in the active Tier A feature set — the
+    other three are computed and preserved but reserved (see module
+    comment above)."""
     out = df.copy()
     out["node_pinned"] = out["req_nodes"].notna()
     out["threads_per_core_set"] = out["threads_per_core"].notna()
+    out["req_switch_set"] = out["req_switch"] != 0
     out["num_tasks_missing"] = out["num_tasks"].isna()
     return out
 
