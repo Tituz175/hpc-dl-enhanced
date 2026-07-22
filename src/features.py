@@ -182,10 +182,17 @@ def filter_completed_jobs(df: pd.DataFrame, dataset: str) -> pd.DataFrame:
 
 
 # --- Embedding dimensionality reduction (Decision #7) -----------------------
-# F-DATA only — PM100 has no job-name embedding field. Tree-based models
-# get a handful of PCA components; FNN/LSTM/TCN can still use the full
-# 384-dim embedding directly (this function doesn't replace that option,
-# it's specifically for the tree-based-model feature matrix).
+# F-DATA only — PM100 has no job-name embedding field.
+#
+# Option C (confirmed): the PCA-reduced embedding is used EVERYWHERE — tree
+# models and FNN/LSTM/TCN alike. The plan's original Decision #7 language
+# ("FNN/LSTM/TCN can take the full embedding or a smaller learned
+# projection") is intentionally narrowed here: the full 384-dim embedding
+# is never loaded for more than one file/sample at a time, for any model
+# family. This keeps the memory profile safe unconditionally, at the cost
+# of not giving the DL models the option of the raw embedding — judged an
+# acceptable trade given the uncertain payoff (SHAP/ablation, Decisions
+# #9/#20, will show whether the retained components matter at all).
 #
 # IMPORTANT — memory: loading F-DATA's raw `embedding` column for all ~26M
 # rows at once measured at ~100GB+ RSS (each row holds an individually
@@ -196,10 +203,29 @@ def filter_completed_jobs(df: pd.DataFrame, dataset: str) -> pd.DataFrame:
 # model file-by-file (transform_fdata_embedding) so the raw embedding for
 # more than one month is never held in memory simultaneously.
 
+def compute_embedding_explained_variance(sample_df: pd.DataFrame, max_components: int = 100) -> PCA:
+    """Fit PCA with many components on a sample, purely to inspect
+    cumulative explained variance — used to pick n_components empirically
+    (via n_components_for_variance) rather than guessing a "handful"."""
+    stacked = np.stack(sample_df["embedding"].to_numpy())
+    max_components = min(max_components, stacked.shape[0], stacked.shape[1])
+    return PCA(n_components=max_components, random_state=0).fit(stacked)
+
+
+def n_components_for_variance(pca: PCA, threshold: float = 0.90) -> int:
+    """Smallest number of components whose cumulative explained variance
+    ratio reaches `threshold`, given a PCA already fit with many
+    components (from compute_embedding_explained_variance)."""
+    cumulative = np.cumsum(pca.explained_variance_ratio_)
+    return int(np.searchsorted(cumulative, threshold) + 1)
+
+
 def fit_fdata_embedding_pca(sample_df: pd.DataFrame, n_components: int = 10) -> PCA:
     """Fit PCA on a representative sample (e.g. the SAMPLE_SIZE dev sample,
     or a dedicated larger fitting sample) — this is the only place the raw
-    embedding should be stacked across more than one file's worth of rows."""
+    embedding should be stacked across more than one file's worth of rows.
+    `n_components` should normally come from n_components_for_variance,
+    not the arbitrary default below (kept only as a fallback)."""
     stacked = np.stack(sample_df["embedding"].to_numpy())
     n_components = min(n_components, stacked.shape[0], stacked.shape[1])
     return PCA(n_components=n_components, random_state=0).fit(stacked)

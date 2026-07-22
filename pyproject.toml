@@ -41,6 +41,12 @@ dependencies = [
     "ipykernel",
 ]
 
+[dependency-groups]
+dev = [
+    "papermill",  # cell-by-cell progress logging during notebook execution
+    "psutil",     # memory-footprint checks (e.g. Workstation Capacity Check)
+]
+
 [tool.uv]
 package = false  # this is a research/experiment repo, not an installable library
 
