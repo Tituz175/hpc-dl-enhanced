@@ -43,8 +43,9 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "papermill",  # cell-by-cell progress logging during notebook execution
-    "psutil",     # memory-footprint checks (e.g. Workstation Capacity Check)
+    "papermill",   # cell-by-cell progress logging during notebook execution
+    "psutil",      # memory-footprint checks (e.g. Workstation Capacity Check)
+    "python-docx", # generating Word-format thesis writing drafts from notebook content
 ]
 
 [tool.uv]
