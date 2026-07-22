@@ -22,6 +22,25 @@ I'll flag this explicitly again when we reach notebook 05, but it's recorded her
 
 ---
 
+## Workstation Capacity Check (2026-07-21)
+
+Real specs, measured directly, in response to a concern about whether this workstation can actually handle full-scale F-DATA:
+
+| Resource | Spec |
+|---|---|
+| RAM | 125GB total, 115GB available |
+| CPU | Intel i9-10900X, 10 cores / 20 threads |
+| GPU | RTX 3090, 24GB VRAM |
+| Disk | 161GB free (after all 38 F-DATA files + PM100 = ~26GB) |
+
+**The real constraint found**: F-DATA's `embedding` column (384-dim SBert vector per job) is memory-inefficient at full scale — measured ~5.54GB/month with it included vs. ~1.39GB/month without, on the ~1.3M-row Jan 2022 file. Extrapolated across all ~25.87M rows (38 files, confirmed via parquet metadata): **~100GB+ with the raw embedding included** (would leave almost no headroom) vs. **~27GB without it** (very comfortable).
+
+**Fix applied** (`src/features.py`, commit `ca908ed`): embedding PCA reduction is now split into `fit_fdata_embedding_pca` (fit once, on a sample) and `transform_fdata_embedding` (apply the fitted model per-file, in a loop over months) — verified working across different files. `load_fdata_no_embedding` loads all/many months at once safely when embedding-derived features aren't needed for that step.
+
+**Bottom line**: full-scale F-DATA (all 38 months, all non-embedding columns) is very feasible on this machine (~27GB of 115GB available). The RTX 3090's 24GB VRAM isn't a separate concern for this — DL training only needs mini-batches on the GPU at a time, not the whole dataset resident in VRAM. The 10-core CPU is comfortable for RF/XGBoost/LightGBM's parallel training. The only thing that actually needed a code change was the embedding-loading pattern, which is now fixed.
+
+---
+
 ## Milestone Status
 
 | Months | Milestone | Status | Target Date | Actual Date | Notes |
@@ -29,7 +48,7 @@ I'll flag this explicitly again when we reach notebook 05, but it's recorded her
 | 1–2 | Git repo set up (local) | Done | 2026-07-21 | 2026-07-21 | Root commit `d709812`. Remote not yet created — `gh` CLI unavailable on this machine; create manually on GitHub/GitLab (private) and add as `origin` |
 | 1–2 | Repo scaffolding (src/ package, 9 notebooks, .gitignore) | Done | 2026-07-21 | 2026-07-21 | src/ modules are structural stubs (raise NotImplementedError) pending real data |
 | 1–2 | uv-managed environment (Python 3.12, pyproject.toml + uv.lock) | Done | 2026-07-21 | 2026-07-21 | torch 2.13.0+cu130 confirmed detecting the RTX 3090. Jupyter kernel `hpc-dl-enhanced` registered. Note: pinned Python to 3.12 (not 3.13) since numba/llvmlite lack working 3.13 support; also needed an explicit `numba>=0.60` constraint to stop uv's resolver from picking a broken ancient numba — see commit `bcc6149` |
-| 1–2 | F-DATA + PM100 acquired, EDA done | In Progress | | | Data placed in `data/raw/{fdata,pm100}/`. **Only 1 of 38 F-DATA monthly files present** (`fugaku_22_01.parquet`, Jan 2022) — user is actively fetching the remaining 37 months now. Notebooks 01-02 execute clean end-to-end on a 5000-row sample (`SAMPLE_SIZE` config); full-scale run still pending once more months arrive. Real schemas confirmed against official docs: F-DATA `docs/feature_list.md`, PM100 `documentation/job_features.md` — re-verified PM100 has zero FLOP/performance-counter fields against the actual loaded data too, not just docs |
+| 1–2 | F-DATA + PM100 acquired, EDA done | Done | 2026-07-21 | 2026-07-21 | **All 38 F-DATA monthly files now present** (`21_03.parquet` through `24_04.parquet`, ~25.87M rows total confirmed via parquet metadata) + full PM100. Notebooks 01-02 execute clean end-to-end on a 5000-row sample; full-scale run pending (see Workstation Capacity Check above — feasible at ~27GB RAM if embedding column handled via the new fit/transform split, commit `ca908ed`). Real schemas confirmed against official docs: F-DATA `docs/feature_list.md`, PM100 `documentation/job_features.md` |
 | 1–2 | Tier A/B feature split + sanity-check assertions | Done | 2026-07-21 | 2026-07-21 | `src/features.py` grounded in official column docs, validated against real data (every listed column exists, every real column accounted for). Decisions #1, #19 |
 | 1–2 | Chronological split implemented, target transforms decided | In Progress | | | log1p transform implemented + round-trip-verified on all 6 targets (Decision #3, notebook 02, commit `6087afc`). Chronological split itself still not implemented — needs the remaining 37 F-DATA months first |
 | 1–2 | NPB/Rodinia microbenchmark validation (RTX 3090) | Not Started | | | Decision #16, runs independently of trace pipeline |
@@ -75,7 +94,7 @@ All 9 notebooks are scaffolded (title cell + `src` imports) as of 2026-07-21 —
 | 7 | SBert embedding dimensionality reduction | Done (dev-sample) | 02 | `reduce_fdata_embedding` (PCA, 10 components) implemented and validated. F-DATA only — PM100 has no embedding field |
 | 8 | MAPE + stratified error breakdowns | Not Started | 08 | |
 | 9 | SHAP + permutation/integrated-gradients interpretability | Not Started | 09 | |
-| 10 | F-DATA stratified subsample → full-scale strategy | In Progress | 01, all training notebooks | `SAMPLE_SIZE` config added to notebook 01 (currently random 5000-row sample, not yet the stratified-by-job-size/chronological version described in the decision) |
+| 10 | F-DATA stratified subsample → full-scale strategy | In Progress | 01, all training notebooks | `SAMPLE_SIZE` config added to notebook 01 (currently random 5000-row sample, not yet the stratified-by-job-size/chronological version described in the decision). Full-scale feasibility confirmed: ~27GB RAM for all 38 months minus embedding (see Workstation Capacity Check) — no cluster escalation needed for RAM; embedding handled via fit-once/transform-per-file (`load_fdata_no_embedding`, `fit_fdata_embedding_pca`, `transform_fdata_embedding`) |
 | 11 | Git repo/remote + backup discipline | Not Started | — | Repo-level, not notebook-specific |
 | 12 | Plain FNN (no entity-embedding upgrade) | Not Started | 06 | |
 | 13 | LSTM + TCN on PM100 intra-job trace | Not Started | 06 | |
