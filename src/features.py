@@ -98,9 +98,78 @@ PM100_TIER_A_COLUMNS: list[str] = [
     "user_id", "group_id", "partition", "qos", "priority",
     "submit_time", "eligible_time", "time_limit",
     "num_cores_req", "num_nodes_req", "num_gpus_req", "mem_req",
-    "cores_per_task", "num_tasks", "threads_per_core", "shared",
-    "req_nodes", "req_switch",
+    "cores_per_task", "num_tasks", "shared", "req_switch",
+    "num_tasks_missing",  # promoted after feature vetting — see below
 ]
+
+# --- PM100 missing-by-design fields (feature vetting) -----------------------
+# Discovered during EDA: num_tasks (4.1% missing), req_nodes (88.6%
+# missing), threads_per_core (99.6% missing) have very different
+# missingness mechanisms — verified against the FULL PM100 dataset, not a
+# sample (see notebook 02's "Feature Vetting" section for the complete
+# analysis with visualizations: effect sizes, redundancy cross-tabs, and
+# user-concentration checks).
+#
+# - req_nodes: Slurm's explicit node-pinning flag (--nodelist) — null by
+#   design for the ~88.6% of jobs that don't request specific named
+#   hardware. Its derived flag (node_pinned) shows a real effect on
+#   targets (power ~35% lower when pinned) BUT is concentrated in just 19
+#   users, with the top 5 accounting for 99.3% of all pinned jobs (73.5%
+#   from a single user) — too concentrated to trust as a generalizable
+#   Tier A feature. RESERVED, not active.
+# - threads_per_core: Slurm's explicit SMT/hyperthreading override — null
+#   by design for ~99.6% of jobs. Its derived flag (threads_per_core_set)
+#   shows an even larger effect (run_time ~4x higher, memory ~4x lower)
+#   but is concentrated in only 6 users (85% from a single user), and
+#   isn't explained by partition/qos/GPU-allocation (checked and ruled
+#   out as redundant with those). Same verdict despite the strong effect
+#   size: RESERVED, not active.
+# - num_tasks: ordinary incomplete logging (~4.1% missing), NOT an
+#   optional Slurm flag — no single dominant user. Its derived
+#   missingness flag (num_tasks_missing) shows a real effect (run_time
+#   ~2x higher when missing) AND is reasonably distributed across 101
+#   users (top-5 share = 47.1%, not dominated by one) — PROMOTED to
+#   active Tier A.
+#
+# Both raw columns (req_nodes, threads_per_core) and all three derived
+# flags are preserved in the processed dataset regardless of this split —
+# only num_tasks_missing is added to the active PM100_TIER_A_COLUMNS list.
+# This concentration check generalizes: both datasets are dominated by a
+# handful of power users (PM100's top-5 users = 45.4% of all jobs, top-10
+# = 59.9%; F-DATA's top-5 = 41.4% in a 5-file sample) — worth the same
+# scrutiny for any future derived feature, not just these three.
+
+PM100_RESERVED_COLUMNS: list[str] = ["req_nodes", "threads_per_core", "node_pinned", "threads_per_core_set"]
+
+
+def add_pm100_derived_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    """Binary indicators for PM100's missing-by-design/incomplete fields.
+    Returns a copy of df with node_pinned, threads_per_core_set, and
+    num_tasks_missing added. Only num_tasks_missing belongs in the active
+    Tier A feature set — node_pinned and threads_per_core_set are
+    computed and preserved but reserved (see module comment above)."""
+    out = df.copy()
+    out["node_pinned"] = out["req_nodes"].notna()
+    out["threads_per_core_set"] = out["threads_per_core"].notna()
+    out["num_tasks_missing"] = out["num_tasks"].isna()
+    return out
+
+
+def assert_reserved_columns_preserved(df: pd.DataFrame) -> None:
+    """Sanity-check assertion (Decision #19 discipline): reserved columns
+    must exist in the processed dataframe (not silently dropped by a
+    future refactor) and must NOT appear in the active Tier A feature
+    list (not silently promoted back in without re-running the vetting)."""
+    for col in PM100_RESERVED_COLUMNS:
+        assert col in df.columns, (
+            f"Reserved column '{col}' missing from dataframe — it must be "
+            "preserved (not dropped), even though it's excluded from active Tier A."
+        )
+        assert col not in PM100_TIER_A_COLUMNS, (
+            f"Reserved column '{col}' leaked into active PM100_TIER_A_COLUMNS "
+            "— this was deliberately excluded after feature vetting found it "
+            "too concentrated in a handful of users to generalize."
+        )
 
 PM100_TIER_B_COLUMNS: list[str] = [
     "start_time", "end_time",       # run_time (target) is derived from these
