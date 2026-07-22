@@ -186,17 +186,52 @@ def filter_completed_jobs(df: pd.DataFrame, dataset: str) -> pd.DataFrame:
 # get a handful of PCA components; FNN/LSTM/TCN can still use the full
 # 384-dim embedding directly (this function doesn't replace that option,
 # it's specifically for the tree-based-model feature matrix).
+#
+# IMPORTANT — memory: loading F-DATA's raw `embedding` column for all ~26M
+# rows at once measured at ~100GB+ RSS (each row holds an individually
+# allocated 384-dim array object — very memory-inefficient at this scale),
+# versus ~27GB for all other 44 columns combined. Never do
+# `PCA(...).fit_transform(everything)` across the full dataset. Fit once
+# on a sample (fit_fdata_embedding_pca), then apply the already-fitted
+# model file-by-file (transform_fdata_embedding) so the raw embedding for
+# more than one month is never held in memory simultaneously.
+
+def fit_fdata_embedding_pca(sample_df: pd.DataFrame, n_components: int = 10) -> PCA:
+    """Fit PCA on a representative sample (e.g. the SAMPLE_SIZE dev sample,
+    or a dedicated larger fitting sample) — this is the only place the raw
+    embedding should be stacked across more than one file's worth of rows."""
+    stacked = np.stack(sample_df["embedding"].to_numpy())
+    n_components = min(n_components, stacked.shape[0], stacked.shape[1])
+    return PCA(n_components=n_components, random_state=0).fit(stacked)
+
+
+def transform_fdata_embedding(df: pd.DataFrame, pca: PCA) -> pd.DataFrame:
+    """Apply an already-fitted PCA (from fit_fdata_embedding_pca) to `df`.
+    Safe to call per-file in a loop over all 38 months — never re-fits,
+    so it never needs the full-dataset embedding in memory at once."""
+    stacked = np.stack(df["embedding"].to_numpy())
+    components = pca.transform(stacked)
+    columns = [f"emb_pc_{i}" for i in range(pca.n_components_)]
+    return pd.DataFrame(components, columns=columns, index=df.index)
+
 
 def reduce_fdata_embedding(df: pd.DataFrame, n_components: int = 10) -> pd.DataFrame:
-    """PCA-reduce F-DATA's 384-dim `embedding` column to `n_components`
-    columns named emb_pc_0..N-1. Returns a new DataFrame with those columns
-    only (index-aligned with `df`), to be concatenated onto a Tier A/B
-    feature matrix in place of the raw embedding column."""
-    stacked = np.stack(df["embedding"].to_numpy())
-    n_components = min(n_components, stacked.shape[0], stacked.shape[1])
-    components = PCA(n_components=n_components, random_state=0).fit_transform(stacked)
-    columns = [f"emb_pc_{i}" for i in range(n_components)]
-    return pd.DataFrame(components, columns=columns, index=df.index)
+    """Convenience wrapper for small/dev-sample use (fits and transforms in
+    one call, as notebook 02 does on the 5000-row sample). For full-scale
+    work across many months, use fit_fdata_embedding_pca once +
+    transform_fdata_embedding per file instead — see the memory note above."""
+    return transform_fdata_embedding(df, fit_fdata_embedding_pca(df, n_components))
+
+
+def load_fdata_no_embedding(paths: list[str]) -> pd.DataFrame:
+    """Load and concatenate multiple F-DATA monthly parquet files WITHOUT
+    the embedding column — this is the memory-safe way to load many/all
+    months at once (~27GB for all 38 months vs ~100GB+ with embedding
+    included). Use fit_fdata_embedding_pca/transform_fdata_embedding
+    separately (per-file) if embedding-derived features are also needed."""
+    cols = [c for c in dict.fromkeys(FDATA_TIER_A_COLUMNS + FDATA_TIER_B_COLUMNS
+                                     + list(FDATA_TARGETS.values())) if c != "embedding"] + ["jid"]
+    return pd.concat([pd.read_parquet(p, columns=cols) for p in paths], ignore_index=True)
 
 
 # --- Historical rolling-stat features (Tier A) ------------------------------
