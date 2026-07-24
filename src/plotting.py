@@ -44,3 +44,42 @@ def plot_residuals(y_true: np.ndarray, y_pred: np.ndarray, title: str):
     fig.suptitle(title)
     fig.tight_layout()
     return fig
+
+
+def plot_roofline(
+    opint: np.ndarray,
+    achieved_flops_per_node: np.ndarray,
+    peak_flops_per_node: float,
+    peak_bw_per_node: float,
+    pclass=None,
+    title: str = "F-DATA Roofline (A64FX, per-node)",
+):
+    """Arithmetic-intensity-vs-performance scatter with the roofline
+    ceiling line and shaded compute/memory-bound regions (Track B5).
+    Both axes are per-node quantities — opint is node-count invariant by
+    construction, and achieved performance should be pre-divided by nnuma
+    (see roofline.hierarchical_roofline_fdata) so every job plots against
+    the same single-node ceiling regardless of how many nodes it used."""
+    ridge_point = peak_flops_per_node / peak_bw_per_node
+    fig, ax = plt.subplots(figsize=(7, 6))
+    valid = (opint > 0) & (achieved_flops_per_node > 0)
+    if pclass is not None:
+        for label, color in [("compute-bound", "tab:orange"), ("memory-bound", "tab:blue")]:
+            mask = valid & (pclass == label)
+            ax.scatter(opint[mask], achieved_flops_per_node[mask], alpha=0.15, s=5,
+                       color=color, label=label)
+    else:
+        ax.scatter(opint[valid], achieved_flops_per_node[valid], alpha=0.15, s=5)
+
+    x = np.logspace(np.log10(opint[valid].min()), np.log10(opint[valid].max()), 200)
+    ceiling = np.minimum(peak_flops_per_node, x * peak_bw_per_node)
+    ax.plot(x, ceiling, "r-", linewidth=2, label="Roofline ceiling")
+    ax.axvline(ridge_point, color="gray", linestyle="--", linewidth=1, label="Ridge point")
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel("Operational intensity (FLOP/byte)")
+    ax.set_ylabel("Performance (FLOP/s, per node)")
+    ax.set_title(title)
+    ax.legend(fontsize=8)
+    fig.tight_layout()
+    return fig

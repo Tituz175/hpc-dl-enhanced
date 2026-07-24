@@ -39,12 +39,21 @@ from sklearn.decomposition import PCA
 # seconds, and econ is Watt-hours (W·s / 3600 = Wh) — the units are
 # self-consistent, nothing is broken.
 #
-# This makes F-DATA's power target semantically DIFFERENT from PM100's
-# node_power_consumption (which is genuinely per-node, per Decision #15) —
-# not just a different unit, a different physical quantity (whole-job
-# total vs. single-node). Footnote this alongside the existing
-# Roofline-vs-power-model comparability caveat wherever F-DATA and PM100
-# power numbers appear in the same table/figure.
+# CORRECTION (2026-07-23, notebook 03): PM100's node_power_consumption
+# turns out to be the SAME kind of quantity as avgpcon above, not the
+# per-node reading its name implies — verified directly (not just from
+# the docs) in notebook 03: dividing each job's mean node_power_consumption
+# by num_nodes_alloc gives a stable ~680-733W across every node count from
+# 1 to 32 nodes (single-node jobs average 733W; 16-node jobs average
+# 10,876W, i.e. 680W/node), which is only possible if the recorded value
+# is already summed across all allocated nodes at each 20s sample. An
+# earlier pass over this file asserted node_power_consumption was
+# "genuinely per-node" — that was wrong, based on the field name and docs
+# rather than a direct check against the data, the same mistake the
+# avgpcon investigation above was originally trying to avoid. Both
+# datasets' power fields are job-wide totals; the calibrated power model
+# in src/roofline.py accounts for this (P_idle scales by num_nodes_alloc,
+# not applied once per job).
 
 FDATA_TIER_A_COLUMNS: list[str] = [
     "usr",          # username — for historical rolling stats
