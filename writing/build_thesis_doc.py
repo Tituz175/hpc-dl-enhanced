@@ -121,14 +121,28 @@ fig("nb01_cell15_img1.png",
     "Figure 3.4. F-DATA execution time, raw versus log1p-transformed, "
     "illustrating the heavy-tailed distribution that motivates training in "
     "log space.")
+p("The same pattern holds for the other five targets. F-DATA's memory and "
+  "power, and all three of PM100's targets, show the same near-zero-dominated "
+  "raw histogram spread into something usable once log1p-transformed.")
+fig("nb01_cell15_img2.png",
+    "Figure 3.5. F-DATA memory (mmszu), raw versus log1p-transformed.")
+fig("nb01_cell15_img3.png",
+    "Figure 3.6. F-DATA power (avgpcon), raw versus log1p-transformed.")
+fig("nb01_cell16_img4.png",
+    "Figure 3.7. PM100 execution time (run_time), raw versus log1p-transformed.")
+fig("nb01_cell16_img5.png",
+    "Figure 3.8. PM100 memory (mem_alloc), raw versus log1p-transformed.")
+fig("nb01_cell16_img6.png",
+    "Figure 3.9. PM100 power (node_power_consumption), raw versus "
+    "log1p-transformed.")
 p("Only one month of F-DATA was available when this pipeline was first "
   "built; all 38 months were obtained shortly afterward. The two "
   "job-count-over-time plots below cover the full range now available for "
   "both datasets and will matter directly in Chapter 4, where the "
   "chronological train/test split depends on there being enough time span "
   "to split meaningfully.")
-fig("nb01_cell18_img7.png", "Figure 3.5. F-DATA jobs per day across the sampled files.")
-fig("nb01_cell18_img8.png", "Figure 3.6. PM100 jobs per day across its full six-month span.")
+fig("nb01_cell18_img7.png", "Figure 3.10. F-DATA jobs per day across the sampled files.")
+fig("nb01_cell18_img8.png", "Figure 3.11. PM100 jobs per day across its full six-month span.")
 
 h2("3.3 Submission-Time and Post-Hoc Feature Tiers")
 p("The proposal's original feature diagram feeds measured FLOPs, memory "
@@ -141,7 +155,14 @@ p("I split every feature into two tiers to make this distinction impossible to "
   "requested cores, nodes, and memory; queue and priority; requested wall time; "
   "an anonymized job-name embedding; and, for F-DATA, a rolling average of each "
   "user's recent job durations computed using only jobs strictly before the "
-  "current one. Tier B holds everything measured during or after execution — "
+  "current one. On the current dev sample, that rolling average was populated "
+  "for 4,426 of 4,721 F-DATA jobs (93.8 percent) and 3,717 of 3,952 PM100 jobs "
+  "(94.1 percent) — high coverage at this scale, but notebook 02 flags it as "
+  "provisional rather than final: with only a handful of scattered months "
+  "loaded so far, many of these rolling averages rest on very few prior jobs "
+  "per user rather than a full window, and both the coverage rate and the "
+  "values themselves are expected to firm up once more of the dataset is "
+  "loaded. Tier B holds everything measured during or after execution — "
   "allocated versus used resources, exit codes, the hardware counters, and the "
   "power fields. Tier A is what a scheduler could actually use to predict a "
   "job's behavior before running it; Tier B exists for characterizing what "
@@ -543,6 +564,13 @@ p("F-DATA's Roofline baseline and PM100's power model are not directly "
   "table in this thesis that places both side by side, including the one "
   "notebook 03 builds for its own recordkeeping, exists for convenience of "
   "layout, not as a claim that the two numbers mean the same thing.")
+p("Section 3.3 called re-checking assertions after every transformation "
+  "step a deliberate discipline rather than a formality, and this notebook "
+  "kept it up: opint's non-negativity and finiteness, the Roofline ceiling "
+  "never exceeding the compute-bound peak, positive predicted durations, "
+  "finite calibration coefficients, the log1p/expm1 round-trip, and no "
+  "leakage across the chronological split all passed before any number "
+  "reported above was trusted.")
 p("Three things are deferred past this notebook. The Roofline analysis "
   "above covers six of F-DATA's 38 months; the full-scale run is left for "
   "a later notebook, consistent with the dev-scale approach used "
