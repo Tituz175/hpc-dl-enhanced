@@ -94,10 +94,17 @@ p("avgpcon needed a closer look before I trusted it as a target. Its documented 
   "seconds, and econ is recorded in watt-hours rather than joules. The numbers "
   "are internally consistent once the units are understood correctly; the "
   "column name is just misleading about scope. This has one concrete "
-  "consequence for later chapters: F-DATA's power target measures a whole "
-  "job's total draw, while PM100's node_power_consumption is genuinely "
-  "per-node. The two are not directly comparable, and any table that puts them "
-  "side by side needs to say so.")
+  "consequence for later chapters: F-DATA's avgpcon and PM100's "
+  "node_power_consumption turn out to be the same category of field — "
+  "both measure a job's total power draw, summed across every node it "
+  "used, not a single node's reading. Section 5.4 confirmed this "
+  "directly for node_power_consumption, by dividing each job's mean "
+  "power by its allocated node count and finding the result holds close "
+  "to constant, 677–732 watts, across node counts from 1 to 32 — a true "
+  "per-node reading would not need that division to land in the same "
+  "range at every scale. The two fields measure the same kind of "
+  "quantity, but not the same hardware or the same job scale, and any "
+  "table that puts them side by side still needs to say so.")
 
 p("Execution time, memory, and power are all heavy-tailed in both datasets: "
   "most jobs are short and small, and a long tail of much larger jobs pulls "
