@@ -34,6 +34,16 @@ RTX3090_PEAK_FP32_FLOPS: float = 35.58e12
 RTX3090_PEAK_FP64_FLOPS: float = 0.556e12
 RTX3090_PEAK_BW_BYTES: float = 936.2e9
 
+# GA102's L2 cache (published spec): 6 MiB, shared across the whole chip.
+# Relevant here because the timing harness calls the same kernel on the
+# same tensors 20 times in a row (see _time_gpu) — if a kernel's distinct
+# working set fits inside this cache, repeated calls are served from L2
+# rather than DRAM, and achieved bandwidth can legitimately exceed the
+# 936.2 GB/s DRAM peak. That's a real GPU memory-hierarchy effect, not a
+# measurement bug — see the working_set_bytes field below, used to flag
+# (not silently discard) any measurement where this applies.
+RTX3090_L2_CACHE_BYTES: float = 6 * 1024**2
+
 
 @dataclass
 class KernelResult:
@@ -43,6 +53,7 @@ class KernelResult:
     flops: float
     bytes_moved: float
     seconds: float
+    working_set_bytes: float
 
     @property
     def operational_intensity(self) -> float:
@@ -51,6 +62,14 @@ class KernelResult:
     @property
     def achieved_flops_per_sec(self) -> float:
         return self.flops / self.seconds
+
+    @property
+    def fits_in_l2_cache(self) -> bool:
+        """True if this kernel's distinct working set is small enough that
+        repeated calls in the timing loop could be served from L2 rather
+        than DRAM — achieved bandwidth is not meaningfully bounded by the
+        DRAM peak for these points (see RTX3090_L2_CACHE_BYTES above)."""
+        return self.working_set_bytes < RTX3090_L2_CACHE_BYTES
 
 
 def _time_gpu(fn, n_iters: int = 20, n_warmup: int = 5) -> float:
@@ -81,7 +100,8 @@ def run_vector_add(n: int, dtype: torch.dtype) -> KernelResult:
     itemsize = x.element_size()
     flops = 2 * n
     bytes_moved = 3 * n * itemsize
-    return KernelResult("vector_add", str(dtype), n, flops, bytes_moved, seconds)
+    working_set_bytes = 2 * n * itemsize  # distinct arrays touched: x, y
+    return KernelResult("vector_add", str(dtype), n, flops, bytes_moved, seconds, working_set_bytes)
 
 
 def run_dot_product(n: int, dtype: torch.dtype) -> KernelResult:
@@ -94,7 +114,8 @@ def run_dot_product(n: int, dtype: torch.dtype) -> KernelResult:
     itemsize = x.element_size()
     flops = 2 * n
     bytes_moved = 2 * n * itemsize
-    return KernelResult("dot_product", str(dtype), n, flops, bytes_moved, seconds)
+    working_set_bytes = 2 * n * itemsize  # distinct arrays touched: x, z
+    return KernelResult("dot_product", str(dtype), n, flops, bytes_moved, seconds, working_set_bytes)
 
 
 def run_gemv(n: int, dtype: torch.dtype) -> KernelResult:
@@ -107,7 +128,8 @@ def run_gemv(n: int, dtype: torch.dtype) -> KernelResult:
     itemsize = A.element_size()
     flops = 2 * n * n
     bytes_moved = (n * n + n) * itemsize
-    return KernelResult("gemv", str(dtype), n, flops, bytes_moved, seconds)
+    working_set_bytes = bytes_moved  # A and x are each touched only once
+    return KernelResult("gemv", str(dtype), n, flops, bytes_moved, seconds, working_set_bytes)
 
 
 def run_gemm(n: int, dtype: torch.dtype) -> KernelResult:
@@ -120,4 +142,5 @@ def run_gemm(n: int, dtype: torch.dtype) -> KernelResult:
     itemsize = A.element_size()
     flops = 2 * n ** 3
     bytes_moved = 3 * n * n * itemsize
-    return KernelResult("gemm", str(dtype), n, flops, bytes_moved, seconds)
+    working_set_bytes = bytes_moved  # A, B, C are each touched only once
+    return KernelResult("gemm", str(dtype), n, flops, bytes_moved, seconds, working_set_bytes)
