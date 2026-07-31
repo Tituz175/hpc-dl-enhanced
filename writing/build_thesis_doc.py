@@ -97,7 +97,7 @@ p("avgpcon needed a closer look before I trusted it as a target. Its documented 
   "consequence for later chapters: F-DATA's avgpcon and PM100's "
   "node_power_consumption turn out to be the same category of field — "
   "both measure a job's total power draw, summed across every node it "
-  "used, not a single node's reading. Section 5.4 confirmed this "
+  "used, not a single node's reading. Section 4.4 confirmed this "
   "directly for node_power_consumption, by dividing each job's mean "
   "power by its allocated node count and finding the result holds close "
   "to constant, 677–732 watts, across node counts from 1 to 32 — a true "
@@ -205,7 +205,7 @@ p("I also decided, after an earlier round of discussion, to use the "
   "loading the raw embedding for the full F-DATA dataset measures at over 100 "
   "gigabytes of resident memory, against roughly 27 gigabytes for every other "
   "column combined, because each row's embedding is stored as an individually "
-  "allocated array rather than one contiguous block. Section 5.2 covers this "
+  "allocated array rather than one contiguous block. Section 4.2 covers this "
   "measurement and the loading strategy it led to in more detail.")
 
 h2("3.5 Feature Vetting: PM100's Missing-by-Design Fields")
@@ -339,13 +339,16 @@ p("Both datasets record jobs that failed, were cancelled, or hit resource "
 
 # ============================================================
 doc.add_page_break()
-h1("Chapter 5 (partial): Experimental Environment and Reproducibility")
-p("This chapter's final form will also cover model training details once "
-  "those exist. The material below documents the computing environment and "
-  "the memory constraints discovered while building the data pipeline, which "
-  "belong here regardless of what else the chapter ends up containing.")
+h1("Chapter 4 (partial): Methodology")
+p("This chapter covers how the work in this thesis was built, set up, and "
+  "validated — the computing environment, the memory constraints that "
+  "shaped the data-loading strategy, the notebook-execution tooling, and "
+  "the construction and validation of the two analytical baselines. Model "
+  "architectures and training procedures for the classical ML, deep "
+  "learning, and hybrid models will be added here once that work exists; "
+  "this is not the complete chapter.")
 
-h2("5.1 Computing Environment")
+h2("4.1 Computing Environment")
 p("All experiments in this thesis, at least through the feature-engineering "
   "stage, run on a single workstation: an Intel i9-10900X (10 cores, 20 "
   "threads), 125 gigabytes of RAM, and an NVIDIA RTX 3090 with 24 gigabytes "
@@ -365,7 +368,7 @@ p("All experiments in this thesis, at least through the feature-engineering "
   "version exactly, and its GPU detection was confirmed directly rather than "
   "assumed from the installation succeeding.")
 
-h2("5.2 Memory Constraints at Full Scale")
+h2("4.2 Memory Constraints at Full Scale")
 p("F-DATA's 38 monthly files total roughly 26 gigabytes on disk, comfortably "
   "within the workstation's storage, but disk size is not the same question "
   "as memory footprint once loaded. Measuring one month's file directly: "
@@ -389,7 +392,7 @@ p("The inefficiency is specific to how the embedding is stored: each row's "
   "without touching the embedding at all covers the case where "
   "embedding-derived features are not needed for a given step.")
 
-h2("5.3 Notebook Execution and Monitoring")
+h2("4.3 Notebook Execution and Monitoring")
 p("Early runs of the data-loading notebook appeared to hang for extended "
   "periods with no visible output, which turned out to have two distinct "
   "causes rather than one. The first was calling a generic describe() "
@@ -400,11 +403,11 @@ p("Early runs of the data-loading notebook appeared to hang for extended "
   "was treating PM100's node_power_consumption as if it were a single "
   "number per job, when it is in fact a time series — power sampled roughly "
   "every 20 seconds for the duration of the job, which is exactly the kind "
-  "of sequence data the LSTM and TCN architectures in Chapter 4 are meant to "
-  "use. Both were fixed at the source rather than worked around: the "
-  "embedding column is excluded from any generic summary call, and any "
-  "scalar treatment of the power column reduces the sequence to a per-job "
-  "mean explicitly first.")
+  "of sequence data the LSTM and TCN architectures later in this chapter "
+  "are meant to use. Both were fixed at the source rather than worked "
+  "around: the embedding column is excluded from any generic summary call, "
+  "and any scalar treatment of the power column reduces the sequence to a "
+  "per-job mean explicitly first.")
 p("Notebooks are now executed with papermill rather than plain jupyter "
   "nbconvert, specifically because nbconvert only writes output once "
   "execution finishes entirely, which gives no way to distinguish a slow "
@@ -413,13 +416,28 @@ p("Notebooks are now executed with papermill rather than plain jupyter "
   "hanging-versus-slow question above rather than guesswork based on "
   "process CPU time.")
 
-h2("5.4 Analytical Baselines")
+p("Sections 4.4 and 4.5 are one methodological thread, not two separate "
+  "topics. F-DATA's Roofline ceiling in 4.4 is built entirely from the "
+  "dataset's own reported FLOP and bandwidth counters, which leaves the "
+  "construction itself unverified: does the ceiling formula and its "
+  "compute/memory-bound classification actually recover the right answer, "
+  "on hardware where the right answer is independently known, rather than "
+  "only looking plausible because the same source produced both the "
+  "inputs and the label it's checked against? Section 4.5 exists to "
+  "answer exactly that, using controlled GPU kernels timed directly on "
+  "this workstation rather than F-DATA's self-reported figures. 4.4 "
+  "describes what was built; 4.5 describes why it can be trusted. The "
+  "actual outcomes of both — the R² and MAPE numbers, the calibrated "
+  "coefficients, the classification results — are reported afterward, in "
+  "Chapter 5.")
+
+h2("4.4 Analytical Baseline Construction")
 p("Notebook 03 built the two analytical baselines this study needs: a "
-  "Hierarchical Roofline model for F-DATA, and a calibrated "
-  "resource-utilization power model for PM100. The two datasets need "
-  "different treatments here, not just different numbers — F-DATA has the "
-  "hardware performance counters Roofline requires, and PM100 does not, a "
-  "distinction established already in Section 3.1.")
+  "Hierarchical Roofline model for F-DATA (Yang et al. 2019), and a "
+  "calibrated resource-utilization power model for PM100. The two "
+  "datasets need different treatments here, not just different numbers — "
+  "F-DATA has the hardware performance counters Roofline requires, and "
+  "PM100 does not, a distinction established already in Section 3.1.")
 p("F-DATA was loaded as six consecutive monthly files, March through August "
   "2021, rather than the scattered-month sampling used in notebooks 01 and "
   "02. The chronological train/test split this notebook needed only makes "
@@ -443,7 +461,6 @@ p("A chronological split was implemented for the first time in this "
   "implemented once, in a shared module, so every notebook from here "
   "forward compares models against the same boundary rather than each "
   "picking its own.")
-
 p("F-DATA's Roofline ceiling comes from the A64FX processor's published "
   "specifications: 3.3792 teraFLOP/s double-precision peak and 1024 "
   "gigabytes/second of peak HBM2 bandwidth, both per node. Before trusting "
@@ -460,42 +477,6 @@ p("F-DATA's Roofline ceiling comes from the A64FX processor's published "
   "job's rate is divided by its node count. Both fields are job-wide "
   "totals, so the ceiling applied below is scaled by each job's node count "
   "before comparison.")
-fig("nb03_cell12_img1.png",
-    "Figure 5.1. F-DATA Roofline, per-node operational intensity against "
-    "per-node performance, for 2,593,124 completed jobs across the "
-    "six-month sample. The red ceiling combines the compute-bound peak "
-    "(3.3792 TFLOP/s) and the memory-bound line (operational intensity "
-    "times 1024 GB/s); the dashed line marks the ridge point at 3.30 "
-    "FLOP/byte.")
-p("Classifying each job as compute-bound or memory-bound from its position "
-  "relative to the ridge point recovered F-DATA's own precomputed pclass "
-  "label in 99.9931 percent of jobs, which is as close to a direct "
-  "confirmation of the ceiling's correctness as this data can give.")
-p("The Roofline ceiling implies a best-case duration for every job: how "
-  "long it would take running at the fastest rate its own measured "
-  "operational intensity allows. Evaluated against actual duration on the "
-  "held-out test split, this scored an R² of -0.326 and a MAPE of 99.93 "
-  "percent. A naive baseline — each job's own user's median duration over "
-  "their training-period jobs, falling back to the training-period global "
-  "median for users with no training history — scored an R² of -0.096 and "
-  "a MAPE of 15,770 percent on the same split. Both numbers being negative "
-  "is not a bug in either baseline. The Roofline ceiling assumes a job "
-  "spends its entire wall-clock duration running at peak achievable rate, "
-  "with no time lost to I/O, synchronization, or any other non-compute "
-  "phase, so its predicted durations come out roughly five orders of "
-  "magnitude below actual ones — a job predicted to finish in a fraction "
-  "of a second actually running for thousands of seconds is the expected "
-  "outcome of that assumption, not a sign the ceiling was computed wrong. "
-  "The naive baseline's enormous MAPE is a known property of that metric "
-  "when actual values sit close to zero — F-DATA's minimum recorded "
-  "duration is 1 second — rather than evidence the median itself is a bad "
-  "estimate; RMSE and R² tell a more usable story for this baseline than "
-  "MAPE does on its own. Both baselines are exactly the floor the "
-  "classical ML, deep learning, and hybrid models in later chapters need "
-  "to clear, and a physics-informed model landing this far below even a "
-  "naive median is itself worth stating plainly in this thesis rather than "
-  "only reporting the numbers that make later models look good.")
-
 p("PM100 has no FLOP, instruction, or performance-counter field anywhere "
   "in its schema — confirmed directly against documentation/job_features.md, "
   "not assumed from the absence noted in Section 3.1 — so no Roofline "
@@ -519,7 +500,7 @@ p("Building that model meant revisiting an assumption from Section 3.2, "
   "interpretation: the idle-power term scales with the number of nodes "
   "allocated, rather than being added once per job.")
 fig("nb03_cell19_img2.png",
-    "Figure 5.2. PM100's mean node_power_consumption divided by allocated "
+    "Figure 4.1. PM100's mean node_power_consumption divided by allocated "
     "node count, for jobs at each node count from 1 to 32. A per-node "
     "reading would not need this division to stay flat across scales.")
 p("Before fitting anything, I checked how the model's four predictors — "
@@ -527,37 +508,7 @@ p("Before fitting anything, I checked how the model's four predictors — "
   "Marconi100 assigns cores, GPUs, and memory to a job in close to a fixed "
   "ratio per node. They are correlated with each other at 0.85 to 0.97 "
   "across every pair. That is worth knowing before looking at the "
-  "calibrated coefficients below, not after.")
-p("The model was calibrated by ordinary least squares on the training "
-  "split only, never touching the test split: an idle-power coefficient "
-  "of 747.6 watts, 0.256 watts per allocated core, -23.674 watts per "
-  "allocated GPU, and -0.126 watts per megabyte of allocated memory. The "
-  "idle-power figure lands close to the 677-732 watt range measured "
-  "directly above, which is a reasonable plausibility check on the fit. "
-  "The GPU and memory coefficients coming out negative is physically "
-  "backwards for resources that should only add to a node's power draw, "
-  "and the correlation checked above is the direct explanation: with four "
-  "predictors this closely tied to each other, ordinary least squares has "
-  "no clean way to attribute the outcome to one of them over its "
-  "near-duplicate neighbors, even when the resulting fit predicts well "
-  "overall. I am reporting the coefficients as the fit produced them "
-  "rather than adjusting them to look more physically sensible, since "
-  "that would misrepresent what the calibration actually found.")
-fig("nb03_cell25_img3.png",
-    "Figure 5.3. PM100 calibrated power model, predicted against actual "
-    "mean power on the training-period calibration subset. The dashed "
-    "line marks perfect prediction.")
-p("On the held-out test split, the calibrated model scored an R² of 0.910 "
-  "and a MAPE of 21.82 percent, against the naive per-user-median "
-  "baseline's R² of 0.096 and MAPE of 49.75 percent on the same jobs — a "
-  "wide margin in the calibrated model's favor. Read together with the "
-  "Roofline results above, the two analytical baselines behave very "
-  "differently relative to their own naive floors: PM100's power target "
-  "turns out to be far more predictable from allocated resources alone "
-  "than F-DATA's duration is from a user's own recent history, at least on "
-  "the six-month and six-consecutive-month slices used here. The model's "
-  "predictions are trustworthy on this evidence; its individual "
-  "coefficients, for the reason given above, are not.")
+  "calibrated coefficients, reported in Chapter 5, not after.")
 p("F-DATA's Roofline baseline and PM100's power model are not directly "
   "comparable to each other — different formulas, different physical "
   "quantities, and different targets, execution time against power. Any "
@@ -570,7 +521,7 @@ p("Section 3.3 called re-checking assertions after every transformation "
   "never exceeding the compute-bound peak, positive predicted durations, "
   "finite calibration coefficients, the log1p/expm1 round-trip, and no "
   "leakage across the chronological split all passed before any number "
-  "reported above was trusted.")
+  "reported in Chapter 5 was trusted.")
 p("Three things are deferred past this notebook. The Roofline analysis "
   "above covers six of F-DATA's 38 months; the full-scale run is left for "
   "a later notebook, consistent with the dev-scale approach used "
@@ -582,18 +533,14 @@ p("Three things are deferred past this notebook. The Roofline analysis "
   "same comparison tables as the random forest, gradient-boosted tree, "
   "feedforward, recurrent, and hybrid models covered in later chapters.")
 
-h2("5.5 Microbenchmark Validation")
-p("F-DATA's Roofline in Section 5.4 is built entirely from the "
-  "dataset's own reported FLOP and bandwidth counters, which leaves one "
-  "question unanswered: is the construction itself — the ceiling "
-  "formula, the compute/memory-bound classification — actually correct, "
-  "or does it only look plausible because the input counters and the "
-  "output label were computed by related methods? Notebook 04 is a "
-  "small, self-contained side-study built to answer that, independent of "
-  "F-DATA and PM100 entirely: run a handful of GPU kernels locally, time "
-  "them directly, and check whether the same Roofline construction "
-  "recovers the right answer on hardware where the right answer is "
-  "known in advance rather than merely self-reported.")
+h2("4.5 Microbenchmark Validation Methodology")
+p("Section 4.3 raised this question without answering it. This section "
+  "answers it directly: Notebook 04 is a small, self-contained "
+  "side-study, independent of F-DATA and PM100 entirely, that runs a "
+  "handful of GPU kernels locally, times them directly, and checks "
+  "whether the same Roofline construction recovers the right answer on "
+  "hardware where the right answer is known in advance rather than "
+  "merely self-reported.")
 p("It runs on this workstation's own RTX 3090, confirmed directly rather "
   "than assumed: a GA102 die, 82 streaming multiprocessors, compute "
   "capability 8.6, 25.29 gigabytes of memory. Published specs put its "
@@ -632,31 +579,6 @@ p("Each kernel ran across several problem sizes, in both FP32 and FP64, "
   "timed with CUDA events rather than wall-clock time so host-side "
   "Python overhead around the kernel launch wouldn't be included: five "
   "warmup calls discarded, then twenty further calls averaged.")
-p("Unlike F-DATA, these kernels have a regime known in advance by "
-  "construction: vector_add and dot_product are memory-bound at any "
-  "problem size, and gemm should move toward compute-bound as the matrix "
-  "size grows, since its FLOPs scale with the cube of the dimension "
-  "against memory traffic that only scales with the square. The "
-  "classification logic recovered exactly that in every run — "
-  "vector_add and dot_product classified memory-bound in 8 of 8 runs at "
-  "both precisions, and the largest gemm (8192×8192) classified "
-  "compute-bound, reaching 75.8 percent of the FP32 peak and 100.0 "
-  "percent of the FP64 peak. That FP64 figure isn't a typo: the crippled "
-  "consumer FP64 rate is low enough that a modestly sized GEMM saturates "
-  "it easily. Because these kernels' true regime is known independently "
-  "rather than only cross-checked against a dataset's own label, this is "
-  "a stronger validation of the Roofline construction than notebook 03's "
-  "99.9931 percent pclass agreement was.")
-fig("nb04_cell10_img1.png",
-    "Figure 5.4. RTX 3090 measured Roofline, FP32. Achieved performance "
-    "for all four kernels across their tested problem sizes, against the "
-    "35.58 TFLOP/s compute-bound ceiling and the 936.2 GB/s "
-    "memory-bound line.")
-fig("nb04_cell11_img2.png",
-    "Figure 5.5. RTX 3090 measured Roofline, FP64. Same construction as "
-    "Figure 5.4, against FP64's much lower 0.556 TFLOP/s compute-bound "
-    "ceiling — GEMM saturates it at far smaller matrix sizes than in "
-    "FP32.")
 p("Building this validation surfaced a real finding along the way, not a "
   "bug. The first version of the sanity checks failed: vector_add at the "
   "smallest FP32 size (1,000,000 elements, an 8-megabyte working set "
@@ -680,16 +602,16 @@ p("Building this validation surfaced a real finding along the way, not a "
   "explain rather than a tolerance loosened until the assertion stopped "
   "failing.")
 p("This ties directly back to why Yang et al. 2019's Hierarchical "
-  "Roofline, cited for F-DATA's methodology in the previous section, "
-  "models multiple bandwidth levels — L1, L2, device memory, system "
-  "memory — rather than a single DRAM figure. A roofline built against "
-  "DRAM bandwidth alone is exactly the kind of model a small, "
-  "cache-friendly problem can appear to violate, when what actually "
-  "happened is the problem ran against a faster level of the memory "
-  "hierarchy instead. F-DATA's own Roofline used a single measured "
-  "bandwidth field and couldn't have caught this the way a controlled "
-  "microbenchmark can — worth remembering when reading Section 5.4's "
-  "ceiling as if it captured the whole hierarchy, since it doesn't.")
+  "Roofline, introduced in Section 4.4, models multiple bandwidth levels "
+  "— L1, L2, device memory, system memory — rather than a single DRAM "
+  "figure. A roofline built against DRAM bandwidth alone is exactly the "
+  "kind of model a small, cache-friendly problem can appear to violate, "
+  "when what actually happened is the problem ran against a faster level "
+  "of the memory hierarchy instead. F-DATA's own Roofline used a single "
+  "measured bandwidth field and couldn't have caught this the way a "
+  "controlled microbenchmark can — worth remembering when reading "
+  "Section 4.4's ceiling as if it captured the whole hierarchy, since it "
+  "doesn't.")
 p("The same scope limitation stated for F-DATA's own Roofline applies "
   "here too, for the same reason: this workstation's RTX 3090 is neither "
   "Fugaku's A64FX nor Marconi100's V100s, so nothing here is a "
@@ -700,6 +622,112 @@ p("The same scope limitation stated for F-DATA's own Roofline applies "
   "notebook is self-contained and doesn't feed into any other notebook, "
   "which made it the cheapest piece of this work to have cut entirely "
   "had time run short elsewhere — it didn't, so it stayed in scope.")
+
+# ============================================================
+doc.add_page_break()
+h1("Chapter 5 (partial): Results")
+p("This chapter reports what the methodology in Chapter 4 actually "
+  "produced: the analytical baselines' accuracy against held-out data, "
+  "and the microbenchmark validation's classification results. "
+  "Model-training results for the classical ML, deep learning, and "
+  "hybrid models will be added here once that work exists; this is not "
+  "the complete chapter.")
+
+h2("5.1 Analytical Baseline Results")
+fig("nb03_cell12_img1.png",
+    "Figure 5.1. F-DATA Roofline, per-node operational intensity against "
+    "per-node performance, for 2,593,124 completed jobs across the "
+    "six-month sample. The red ceiling combines the compute-bound peak "
+    "(3.3792 TFLOP/s) and the memory-bound line (operational intensity "
+    "times 1024 GB/s); the dashed line marks the ridge point at 3.30 "
+    "FLOP/byte.")
+p("Classifying each job as compute-bound or memory-bound from its position "
+  "relative to the ridge point recovered F-DATA's own precomputed pclass "
+  "label in 99.9931 percent of jobs, which is as close to a direct "
+  "confirmation of the ceiling's correctness as this data can give.")
+p("The Roofline ceiling implies a best-case duration for every job: how "
+  "long it would take running at the fastest rate its own measured "
+  "operational intensity allows. Evaluated against actual duration on the "
+  "held-out test split, this scored an R² of -0.326 and a MAPE of 99.93 "
+  "percent. A naive baseline — each job's own user's median duration over "
+  "their training-period jobs, falling back to the training-period global "
+  "median for users with no training history — scored an R² of -0.096 and "
+  "a MAPE of 15,770 percent on the same split. Both numbers being negative "
+  "is not a bug in either baseline. The Roofline ceiling assumes a job "
+  "spends its entire wall-clock duration running at peak achievable rate, "
+  "with no time lost to I/O, synchronization, or any other non-compute "
+  "phase, so its predicted durations come out roughly five orders of "
+  "magnitude below actual ones — a job predicted to finish in a fraction "
+  "of a second actually running for thousands of seconds is the expected "
+  "outcome of that assumption, not a sign the ceiling was computed wrong. "
+  "The naive baseline's enormous MAPE is a known property of that metric "
+  "when actual values sit close to zero — F-DATA's minimum recorded "
+  "duration is 1 second — rather than evidence the median itself is a bad "
+  "estimate; RMSE and R² tell a more usable story for this baseline than "
+  "MAPE does on its own. Both baselines are exactly the floor the "
+  "classical ML, deep learning, and hybrid models in later chapters need "
+  "to clear, and a physics-informed model landing this far below even a "
+  "naive median is itself worth stating plainly in this thesis rather than "
+  "only reporting the numbers that make later models look good.")
+p("The power model was calibrated by ordinary least squares on the "
+  "training split only, never touching the test split: an idle-power "
+  "coefficient of 747.6 watts, 0.256 watts per allocated core, -23.674 "
+  "watts per allocated GPU, and -0.126 watts per megabyte of allocated "
+  "memory. The idle-power figure lands close to the 677-732 watt range "
+  "measured in Section 4.4, which is a reasonable plausibility check on "
+  "the fit. The GPU and memory coefficients coming out negative is "
+  "physically backwards for resources that should only add to a node's "
+  "power draw, and the correlation checked in that same section is the "
+  "direct explanation: with four predictors this closely tied to each "
+  "other, ordinary least squares has no clean way to attribute the "
+  "outcome to one of them over its near-duplicate neighbors, even when "
+  "the resulting fit predicts well overall. I am reporting the "
+  "coefficients as the fit produced them rather than adjusting them to "
+  "look more physically sensible, since that would misrepresent what the "
+  "calibration actually found.")
+fig("nb03_cell25_img3.png",
+    "Figure 5.2. PM100 calibrated power model, predicted against actual "
+    "mean power on the training-period calibration subset. The dashed "
+    "line marks perfect prediction.")
+p("On the held-out test split, the calibrated model scored an R² of 0.910 "
+  "and a MAPE of 21.82 percent, against the naive per-user-median "
+  "baseline's R² of 0.096 and MAPE of 49.75 percent on the same jobs — a "
+  "wide margin in the calibrated model's favor. Read together with the "
+  "Roofline results above, the two analytical baselines behave very "
+  "differently relative to their own naive floors: PM100's power target "
+  "turns out to be far more predictable from allocated resources alone "
+  "than F-DATA's duration is from a user's own recent history, at least on "
+  "the six-month and six-consecutive-month slices used here. The model's "
+  "predictions are trustworthy on this evidence; its individual "
+  "coefficients, for the reason given above, are not.")
+
+h2("5.2 Microbenchmark Validation Results")
+p("Unlike F-DATA, the RTX 3090 kernels described in Section 4.5 have a "
+  "regime known in advance by construction: vector_add and dot_product "
+  "are memory-bound at any problem size, and gemm should move toward "
+  "compute-bound as the matrix size grows, since its FLOPs scale with "
+  "the cube of the dimension against memory traffic that only scales "
+  "with the square. The classification logic recovered exactly that in "
+  "every run — vector_add and dot_product classified memory-bound in 8 "
+  "of 8 runs at both precisions, and the largest gemm (8192×8192) "
+  "classified compute-bound, reaching 75.8 percent of the FP32 peak and "
+  "100.0 percent of the FP64 peak. That FP64 figure isn't a typo: the "
+  "crippled consumer FP64 rate is low enough that a modestly sized GEMM "
+  "saturates it easily. Because these kernels' true regime is known "
+  "independently rather than only cross-checked against a dataset's own "
+  "label, this is a stronger validation of the Roofline construction "
+  "than the F-DATA Roofline's own 99.9931 percent pclass agreement in "
+  "Section 5.1 was.")
+fig("nb04_cell10_img1.png",
+    "Figure 5.3. RTX 3090 measured Roofline, FP32. Achieved performance "
+    "for all four kernels across their tested problem sizes, against the "
+    "35.58 TFLOP/s compute-bound ceiling and the 936.2 GB/s "
+    "memory-bound line.")
+fig("nb04_cell11_img2.png",
+    "Figure 5.4. RTX 3090 measured Roofline, FP64. Same construction as "
+    "Figure 5.3, against FP64's much lower 0.556 TFLOP/s compute-bound "
+    "ceiling — GEMM saturates it at far smaller matrix sizes than in "
+    "FP32.")
 
 doc.save(OUT_PATH)
 print("saved to", OUT_PATH)
