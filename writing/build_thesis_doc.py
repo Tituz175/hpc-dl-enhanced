@@ -35,8 +35,8 @@ def fig(filename, caption):
 # ============================================================
 doc.add_heading("Working Draft: Chapter 3 and Chapter 5 Material", level=0)
 p("This document collects the writing-ready material produced while building the "
-  "data pipeline for this thesis. It is organized by the chapter each section is "
-  "expected to land in, following the structure recorded in WRITING_TRACKER.md. "
+  "data pipeline for this thesis, organized by the chapter each section is "
+  "expected to land in. "
   "None of this is final prose — line numbers, wording, and even section order "
   "will change once the surrounding chapters exist — but the substance, the "
   "numbers, and the reasoning behind each decision are accurate as of this draft "
@@ -177,8 +177,8 @@ p("I split every feature into two tiers to make this distinction impossible to "
 h2("3.4 Embedding Dimensionality Reduction")
 p("F-DATA's job-name field is anonymized and replaced with a 384-dimensional "
   "Sentence-BERT embedding. Feeding 384 raw dimensions into a random forest or "
-  "gradient-boosted tree model is impractical, so the plan called for reducing "
-  "it with PCA to, in the proposal's words, \"a handful of components.\" I had "
+  "gradient-boosted tree model is impractical, so the original thesis proposal "
+  "called for reducing it with PCA to \"a handful of components.\" I had "
   "originally set that handful to 10 without checking what fraction of the "
   "embedding's variance 10 components actually capture.")
 p("It turned out to be 68 percent on a single month's data — nowhere near "
@@ -414,7 +414,7 @@ p("Notebooks are now executed with papermill rather than plain jupyter "
   "process CPU time.")
 
 h2("5.4 Analytical Baselines")
-p("Notebook 03 built the two analytical baselines the plan calls for: a "
+p("Notebook 03 built the two analytical baselines this study needs: a "
   "Hierarchical Roofline model for F-DATA, and a calibrated "
   "resource-utilization power model for PM100. The two datasets need "
   "different treatments here, not just different numbers — F-DATA has the "
@@ -499,8 +499,8 @@ p("The Roofline ceiling implies a best-case duration for every job: how "
 p("PM100 has no FLOP, instruction, or performance-counter field anywhere "
   "in its schema — confirmed directly against documentation/job_features.md, "
   "not assumed from the absence noted in Section 3.1 — so no Roofline "
-  "variant is computable there. The plan calls instead for a calibrated "
-  "power model, fixed in functional form by hardware reasoning (an idle "
+  "variant is computable there. This section builds a calibrated power "
+  "model instead, fixed in functional form by hardware reasoning (an idle "
   "baseline plus a linear contribution per allocated resource) with only "
   "the coefficients fit to data.")
 p("Building that model meant revisiting an assumption from Section 3.2, "
@@ -583,15 +583,17 @@ p("Three things are deferred past this notebook. The Roofline analysis "
   "feedforward, recurrent, and hybrid models covered in later chapters.")
 
 h2("5.5 Microbenchmark Validation")
-p("Decision #16 calls for a small, contained side-study alongside the two "
-  "analytical baselines in Section 5.4: run a handful of GPU kernels "
-  "locally and check the Roofline construction against real, "
-  "directly-timed hardware behavior, rather than relying only on a "
-  "dataset's self-reported counters. Notebook 04 is that side-study, and "
-  "it doesn't feed into F-DATA or PM100 at all — its only job is to check "
-  "whether the ceiling formula and the compute/memory-bound "
-  "classification logic behind notebook 03's F-DATA Roofline actually "
-  "recover the right answer when the right answer is known in advance.")
+p("F-DATA's Roofline in Section 5.4 is built entirely from the "
+  "dataset's own reported FLOP and bandwidth counters, which leaves one "
+  "question unanswered: is the construction itself — the ceiling "
+  "formula, the compute/memory-bound classification — actually correct, "
+  "or does it only look plausible because the input counters and the "
+  "output label were computed by related methods? Notebook 04 is a "
+  "small, self-contained side-study built to answer that, independent of "
+  "F-DATA and PM100 entirely: run a handful of GPU kernels locally, time "
+  "them directly, and check whether the same Roofline construction "
+  "recovers the right answer on hardware where the right answer is "
+  "known in advance rather than merely self-reported.")
 p("It runs on this workstation's own RTX 3090, confirmed directly rather "
   "than assumed: a GA102 die, 82 streaming multiprocessors, compute "
   "capability 8.6, 25.29 gigabytes of memory. Published specs put its "
@@ -687,17 +689,16 @@ p("This ties directly back to why Yang et al. 2019's Hierarchical "
   "bandwidth field and couldn't have caught this the way a controlled "
   "microbenchmark can — worth remembering when reading Section 5.4's "
   "ceiling as if it captured the whole hierarchy, since it doesn't.")
-p("The scope limitation from Decision #16 applies exactly as it does "
-  "elsewhere in this thesis: this workstation's RTX 3090 is neither "
+p("The same scope limitation stated for F-DATA's own Roofline applies "
+  "here too, for the same reason: this workstation's RTX 3090 is neither "
   "Fugaku's A64FX nor Marconi100's V100s, so nothing here is a "
   "hardware-matched ceiling for either dataset. What it validates is the "
   "construction — does a real, measured achieved-performance-versus-"
   "intensity relationship take the shape the Roofline theory predicts, "
   "on hardware where the correct answer is known in advance. This "
-  "notebook is self-contained and doesn't feed into any other notebook; "
-  "per the plan's descope ordering it was flagged as the easiest clean "
-  "cut if the timeline runs short, since dropping it wouldn't block "
-  "anything else, but it stayed in scope here.")
+  "notebook is self-contained and doesn't feed into any other notebook, "
+  "which made it the cheapest piece of this work to have cut entirely "
+  "had time run short elsewhere — it didn't, so it stayed in scope.")
 
 doc.save(OUT_PATH)
 print("saved to", OUT_PATH)
