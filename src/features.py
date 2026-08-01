@@ -282,9 +282,16 @@ _assert_no_overlap(FDATA_TIER_A_COLUMNS, FDATA_TIER_B_COLUMNS)
 _assert_no_overlap(PM100_TIER_A_COLUMNS, PM100_TIER_B_COLUMNS)
 
 
-def build_tier_a_features(df: pd.DataFrame, dataset: str) -> pd.DataFrame:
-    """Submission-time-only feature matrix. Valid for RQ1/H1 headline results."""
+def build_tier_a_features(df: pd.DataFrame, dataset: str, include_embedding: bool = True) -> pd.DataFrame:
+    """Submission-time-only feature matrix. Valid for RQ1/H1 headline results.
+    Set include_embedding=False when the raw embedding column was never
+    loaded (the memory-safe load_fdata_no_embedding pattern) and is
+    instead PCA-reduced separately, positionally aligned, per
+    fit_fdata_embedding_pca/transform_fdata_embedding (notebook 05
+    onward)."""
     columns = FDATA_TIER_A_COLUMNS if dataset == "fdata" else PM100_TIER_A_COLUMNS
+    if not include_embedding:
+        columns = [c for c in columns if c != "embedding"]
     return df[columns]
 
 
