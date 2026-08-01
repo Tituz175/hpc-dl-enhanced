@@ -64,7 +64,8 @@ FDATA_TIER_A_COLUMNS: list[str] = [
     "qdt",          # time of insertion in job queue (pre-execution)
     "schedsdt",     # time of completed scheduling choice (still pre-execution)
     "elpl",         # elapsed time limit requested
-    "mszl",         # memory size limit requested
+    "mszl",         # memory size limit requested (sentinel-sanitized — see handle_mszl_sentinel)
+    "mszl_unlimited",  # True where mszl was the "no limit requested" sentinel
     "pri",          # priority
     "jobenv_req",   # job environment requested
     "freq_req",     # node frequency requested
@@ -93,6 +94,42 @@ FDATA_TARGETS: dict[str, str] = {
     "memory": "mmszu",   # used memory (Decision #2); fall back to msza (allocated) if null
     "power": "avgpcon",
 }
+
+# --- mszl sentinel handling (Decision #19) ---------------------------------
+# `mszl` (memory size limit requested, Tier A) turns out to use an
+# unsigned-int sentinel for "no limit requested" rather than a null: found
+# 2026-07-31 while scratch-timing notebook 05's SAMPLE_SIZE decision, when
+# it broke XGBoost/LightGBM's histogram binning (see EXPERIMENT_TRACKER.md
+# Data Gotchas). Verified against the 6-month dev slice: 99.5% of rows
+# (2,882,158 / 2,897,734) sit exactly at 2**64 - 1; the rest have real
+# requested limits spanning ~1e9-3e10 (bytes) — a 10-order-of-magnitude
+# range if the sentinel is left mixed in raw.
+MSZL_SENTINEL: float = float(2**64 - 1)
+
+
+def handle_mszl_sentinel(df: pd.DataFrame) -> pd.DataFrame:
+    """Split mszl into a clean boolean flag (mszl_unlimited) plus a
+    sanitized numeric mszl column. Sentinel rows get mszl set to 0.0 (not
+    NaN) so the numeric column stays finite and directly usable by RF
+    without a separate imputation step — mszl_unlimited alone carries the
+    "no limit requested" signal for every model family (RF/XGBoost/
+    LightGBM all handle a binary flag natively). Returns a copy of df with
+    both columns present; only `mszl_unlimited` needs adding to
+    FDATA_TIER_A_COLUMNS (mszl itself already lists there), and this must
+    run before build_tier_a_features (same pattern as
+    add_pm100_derived_indicators for PM100)."""
+    out = df.copy()
+    is_sentinel = out["mszl"] >= 1e15  # sentinel is ~1.8e19; real requests are <=~3e10
+    out["mszl_unlimited"] = is_sentinel
+    out.loc[is_sentinel, "mszl"] = 0.0
+    return out
+
+
+def assert_mszl_sanitized(df: pd.DataFrame) -> None:
+    """Sanity-check assertion (Decision #19): fail loudly if mszl still
+    contains uint64-sentinel-scale values after handle_mszl_sentinel —
+    guards against a future refactor silently reintroducing the bug."""
+    assert (df["mszl"] < 1e15).all(), "mszl still contains sentinel-scale (>=1e15) values"
 
 # --- PM100 ----------------------------------------------------------------
 # No "used" memory field exists at all (only requested/allocated) — so
@@ -367,8 +404,10 @@ def load_fdata_no_embedding(paths: list[str]) -> pd.DataFrame:
     months at once (~27GB for all 38 months vs ~100GB+ with embedding
     included). Use fit_fdata_embedding_pca/transform_fdata_embedding
     separately (per-file) if embedding-derived features are also needed."""
+    _derived_only = {"embedding", "mszl_unlimited"}  # not real parquet columns — added by
+    # handle_mszl_sentinel()/etc. after loading, never present in the raw files
     cols = [c for c in dict.fromkeys(FDATA_TIER_A_COLUMNS + FDATA_TIER_B_COLUMNS
-                                     + list(FDATA_TARGETS.values())) if c != "embedding"] + ["jid"]
+                                     + list(FDATA_TARGETS.values())) if c not in _derived_only] + ["jid"]
     return pd.concat([pd.read_parquet(p, columns=cols) for p in paths], ignore_index=True)
 
 
@@ -401,6 +440,104 @@ def add_user_rolling_stat(
         grouped.transform(lambda s: s.shift(1).rolling(window, min_periods=1).mean())
     )
     return out.sort_index()
+
+
+# --- Stratified sampling by job-size bucket (Decision #10) ------------------
+# Draws a fixed-size sample from an ALREADY-SPLIT frame (train or test),
+# never from the full pre-split data — stratifying before splitting could
+# let the draw disturb which rows fall before/after the chronological
+# boundary the whole evaluation depends on. Bucketed on cnumr (cores
+# requested, Tier A) since it's a genuine submission-time job-size proxy
+# available for both datasets' analogous column.
+
+_JOB_SIZE_COL: dict[str, str] = {"fdata": "cnumr", "pm100": "num_cores_req"}
+
+
+def stratified_sample_by_job_size(
+    df: pd.DataFrame, dataset: str, n: int, n_buckets: int = 5, seed: int = 0
+) -> pd.DataFrame:
+    """Stratified sample of `n` rows from `df` (call separately on an
+    already-split train_df/test_df — see module docstring above), grouped
+    into `n_buckets` quantile buckets of the job-size column."""
+    n = min(n, len(df))
+    col = _JOB_SIZE_COL[dataset]
+    buckets = pd.qcut(df[col], q=n_buckets, duplicates="drop")
+    frac = n / len(df)
+    sampled = df.groupby(buckets, group_keys=False, observed=True).apply(
+        lambda g: g.sample(frac=frac, random_state=seed)
+    )
+    if len(sampled) > n:
+        sampled = sampled.sample(n=n, random_state=seed)
+    elif len(sampled) < n:
+        remainder = df.drop(sampled.index).sample(n=n - len(sampled), random_state=seed)
+        sampled = pd.concat([sampled, remainder])
+    return sampled
+
+
+# --- Datetime -> epoch-seconds encoding -------------------------------------
+# NOT a blind `.astype("int64") // 10**9`: pandas datetime64's internal
+# storage unit varies (ns/us/etc.) and a fixed divisor silently gives the
+# wrong answer depending on that unit — found the hard way while
+# scratch-timing notebook 05's SAMPLE_SIZE decision. F-DATA's datetime
+# columns are datetime64[us, UTC+09:00]; `.astype("int64")` on them gives
+# MICROSECONDS since epoch, not nanoseconds, so a 1e9 divisor is 1000x too
+# small. Subtracting a matching tz-aware reference timestamp and taking
+# total_seconds() sidesteps the storage-unit question entirely.
+
+def datetime_to_epoch_seconds(series: pd.Series) -> pd.Series:
+    """Epoch-seconds encoding of a (possibly tz-aware) datetime column,
+    robust to pandas' internal storage-unit dtype (ns/us/etc.)."""
+    ts = pd.to_datetime(series)
+    tz = ts.dt.tz
+    epoch = pd.Timestamp("1970-01-01", tz=tz) if tz is not None else pd.Timestamp("1970-01-01")
+    return (ts - epoch).dt.total_seconds()
+
+
+# --- Model-ready numeric matrix for F-DATA Tier A (notebook 05 onward) ------
+# build_tier_a_features only selects/validates tier membership — it
+# returns raw, mixed-dtype columns (strings, datetimes, the embedding
+# array), not something a model can fit on directly. This is the encoding
+# step that makes it model-ready: numeric passthrough, mszl_unlimited as
+# int, datetimes to epoch seconds (via datetime_to_epoch_seconds above,
+# not a blind divisor), jobenv_req factorized (near-constant categorical,
+# see the Feature Vetting notes above), usr frequency-encoded (raw
+# high-cardinality username; the per-user rolling-stat feature already
+# captures generalizable per-user history — this adds a coarse
+# concentration signal, not identity), and jnam dropped entirely (its
+# semantic content is already captured by the PCA-reduced embedding
+# passed in separately; a raw near-unique job-name string adds noise, not
+# signal, if frequency-encoded).
+
+FDATA_TIER_A_NUMERIC_PASSTHROUGH: list[str] = ["cnumr", "nnumr", "elpl", "mszl", "pri", "freq_req"]
+FDATA_TIER_A_DATETIME_COLUMNS: list[str] = ["adt", "qdt", "schedsdt"]
+
+
+def build_fdata_numeric_matrix(
+    tier_a_df: pd.DataFrame, embedding_pca_df: pd.DataFrame, extra_columns: pd.DataFrame | None = None
+) -> pd.DataFrame:
+    """Fully numeric Tier A feature matrix for F-DATA, ready for RF/
+    XGBoost/LightGBM (or FNN/LSTM/TCN later). `tier_a_df` must already
+    have gone through handle_mszl_sentinel and be the output of
+    build_tier_a_features. `embedding_pca_df` is the already-fitted PCA
+    transform of this same row set (fit on TRAIN only — see
+    fit_fdata_embedding_pca/transform_fdata_embedding — never re-fit per
+    split, to avoid leaking test rows into the PCA fit). `extra_columns`
+    is for target-specific additions such as the rolling-stat feature
+    (`{target}_user_rolling_mean`), which isn't in the fixed Tier A column
+    list because its name depends on which target is being modeled."""
+    out = pd.DataFrame(index=tier_a_df.index)
+    for col in FDATA_TIER_A_NUMERIC_PASSTHROUGH:
+        out[col] = tier_a_df[col].to_numpy(dtype=float)
+    out["mszl_unlimited"] = tier_a_df["mszl_unlimited"].astype(int)
+    for col in FDATA_TIER_A_DATETIME_COLUMNS:
+        out[f"{col}_epoch"] = datetime_to_epoch_seconds(tier_a_df[col])
+    out["jobenv_req_code"] = pd.factorize(tier_a_df["jobenv_req"])[0]
+    user_counts = tier_a_df["usr"].value_counts()
+    out["usr_freq"] = tier_a_df["usr"].map(user_counts).to_numpy(dtype=float)
+    out = pd.concat([out, embedding_pca_df.reindex(out.index)], axis=1)
+    if extra_columns is not None:
+        out = pd.concat([out, extra_columns.reindex(out.index)], axis=1)
+    return out
 
 
 # --- Target transforms (Decision #3) ----------------------------------------
