@@ -1,4 +1,4 @@
-"""Microbenchmark validation of the Roofline methodology (Decision #16).
+"""Microbenchmark validation of the Roofline methodology.
 
 Runs a small set of GPU kernels spanning a range of arithmetic intensities
 on this workstation's RTX 3090, to construct a genuine MEASURED roofline
@@ -9,8 +9,7 @@ the memory-bound ceiling, high-intensity kernels approaching the
 compute-bound ceiling. This validates the Roofline METHODOLOGY used on
 F-DATA in notebook 03, not the specific numbers — the RTX 3090 is neither
 A64FX (F-DATA) nor Marconi100's V100s (PM100), so nothing here is a
-hardware-matched ceiling for either production dataset (Decision #16's
-explicit scope limitation).
+hardware-matched ceiling for either production dataset.
 
 Rodinia's own benchmark suite was not compiled/run directly here — four
 standard kernels below span low to high arithmetic intensity the same way

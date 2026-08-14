@@ -1,4 +1,6 @@
-"""Tier A/B feature-set builders (Decision #1).
+"""Tier A/B feature-set builders, kept as two separate functions rather
+than one function with a flag — this makes it structurally hard for an
+experiment to accidentally mix tiers.
 
 Tier A — submission-time features (known before the job runs): the only
 tier valid for a genuine pre-execution prediction claim, and what RQ1/H1
@@ -7,10 +9,6 @@ are evaluated on as the headline result.
 Tier B — execution-time/post-hoc features (measured FLOPs, actual power,
 performance counters): valid for characterization (Roofline analysis)
 and as input to the Hybrid residual model, never as a scheduling predictor.
-
-Keeping these as two separate builder functions (rather than one function
-with a flag) is the point — it makes it structurally hard for an
-experiment to accidentally mix tiers.
 
 Column classifications below are grounded in the official documentation:
 - F-DATA: https://github.com/francescoantici/F-DATA/blob/main/docs/feature_list.md
@@ -22,9 +20,10 @@ import pandas as pd
 from sklearn.decomposition import PCA
 
 # --- F-DATA -------------------------------------------------------------
-# Targets (not features): duration (execution time), mmszu (memory used,
-# per Decision #2's primary choice), avgpcon (power). minpcon/maxpcon are
-# auxiliary, not the primary power target.
+# Targets (not features): duration (execution time), mmszu (memory used —
+# preferred over allocated memory since it's the practically useful
+# quantity for right-sizing allocations), avgpcon (power). minpcon/maxpcon
+# are auxiliary, not the primary power target.
 #
 # IMPORTANT — avgpcon/minpcon/maxpcon semantics (verified against real data,
 # not just the column docs): despite being named "average/min/max NODE
@@ -69,7 +68,9 @@ FDATA_TIER_A_COLUMNS: list[str] = [
     "pri",          # priority
     "jobenv_req",   # job environment requested
     "freq_req",     # node frequency requested
-    "embedding",    # SBert encoding of job name/sensitive data (Decision #7)
+    "embedding",    # SBert encoding of job name/sensitive data — irreversible,
+                    # for privacy; only ever used via its PCA-reduced form
+                    # (see below), never the raw 384-dim vector
 ]
 
 FDATA_TIER_B_COLUMNS: list[str] = [
@@ -91,11 +92,13 @@ FDATA_TIER_B_COLUMNS: list[str] = [
 
 FDATA_TARGETS: dict[str, str] = {
     "execution_time": "duration",
-    "memory": "mmszu",   # used memory (Decision #2); fall back to msza (allocated) if null
+    "memory": "mmszu",   # used memory — preferred over allocated since it's the
+                         # practically useful quantity for right-sizing
+                         # allocations; fall back to msza (allocated) only if null
     "power": "avgpcon",
 }
 
-# --- mszl sentinel handling (Decision #19) ---------------------------------
+# --- mszl sentinel handling -------------------------------------------------
 # `mszl` (memory size limit requested, Tier A) turns out to use an
 # unsigned-int sentinel for "no limit requested" rather than a null: found
 # 2026-07-31 while scratch-timing notebook 05's SAMPLE_SIZE decision, when
@@ -126,9 +129,9 @@ def handle_mszl_sentinel(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def assert_mszl_sanitized(df: pd.DataFrame) -> None:
-    """Sanity-check assertion (Decision #19): fail loudly if mszl still
-    contains uint64-sentinel-scale values after handle_mszl_sentinel —
-    guards against a future refactor silently reintroducing the bug."""
+    """Sanity-check assertion: fail loudly if mszl still contains
+    uint64-sentinel-scale values after handle_mszl_sentinel — guards
+    against a future refactor silently reintroducing the bug."""
     assert (df["mszl"] < 1e15).all(), "mszl still contains sentinel-scale (>=1e15) values"
 
 
@@ -144,12 +147,13 @@ def assert_avgpcon_is_job_total(df: pd.DataFrame, corr_threshold: float = 0.9) -
 
 # --- PM100 ----------------------------------------------------------------
 # No "used" memory field exists at all (only requested/allocated) — so
-# PM100's memory target is necessarily mem_alloc, the Decision #2 fallback
-# case, not a choice. No FLOP/performance-counter fields exist (verified
-# directly against both the docs and the actual parquet schema), so PM100
-# has no Tier B Roofline-relevant columns — its Tier B is just the
-# runtime/actuals needed for post-hoc characterization and Hybrid
-# residual learning on the Power target (Decision #15).
+# PM100's memory target is necessarily mem_alloc — the fallback case, not
+# a choice. No FLOP/performance-counter fields exist (verified directly
+# against both the docs and the actual parquet schema), so PM100 has no
+# Tier B Roofline-relevant columns — its Tier B is just the runtime/actuals
+# needed for post-hoc characterization and, since PM100 has no
+# physics-grounded prior for execution time or memory, Hybrid residual
+# learning on the Power target only.
 
 PM100_TIER_A_COLUMNS: list[str] = [
     "user_id", "group_id", "partition", "qos", "priority",
@@ -247,10 +251,10 @@ def add_pm100_derived_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def assert_reserved_columns_preserved(df: pd.DataFrame) -> None:
-    """Sanity-check assertion (Decision #19 discipline): reserved columns
-    must exist in the processed dataframe (not silently dropped by a
-    future refactor) and must NOT appear in the active Tier A feature
-    list (not silently promoted back in without re-running the vetting)."""
+    """Sanity-check assertion: reserved columns must exist in the processed
+    dataframe (not silently dropped by a future refactor) and must NOT
+    appear in the active Tier A feature list (not silently promoted back
+    in without re-running the vetting)."""
     for col in PM100_RESERVED_COLUMNS:
         assert col in df.columns, (
             f"Reserved column '{col}' missing from dataframe — it must be "
@@ -268,7 +272,8 @@ PM100_TIER_B_COLUMNS: list[str] = [
     "cores_allocated", "cores_alloc_layout",
     "num_cores_alloc", "num_nodes_alloc", "num_gpus_alloc",
     "mem_alloc", "nodes",
-    "node_power_consumption",       # power target (time series, Decision #13's LSTM/TCN sequence)
+    "node_power_consumption",       # power target — also a per-job time series,
+                                     # the genuine intra-job sequence LSTM/TCN train on
     "mem_power_consumption", "cpu_power_consumption",
 ]
 
@@ -279,9 +284,11 @@ PM100_TARGETS: dict[str, str] = {
 }
 
 # num_gpus_alloc is Tier B (not requested), but also used as the CPU-only
-# vs. GPU stratification variable for evaluation slicing (Decision #8) —
-# that's a reporting/grouping use, not a predictive-feature use, so it
-# doesn't need Tier A/B treatment for that purpose.
+# vs. GPU stratification variable for evaluation slicing — reported
+# alongside the aggregate metrics so it's clear whether accuracy holds up
+# the same way for GPU jobs as for CPU-only ones, not just a single
+# blended number. That's a reporting/grouping use, not a predictive-
+# feature use, so it doesn't need Tier A/B treatment for that purpose.
 
 
 def _assert_no_overlap(tier_a: list[str], tier_b: list[str]) -> None:
@@ -313,8 +320,11 @@ def build_tier_b_features(df: pd.DataFrame, dataset: str) -> pd.DataFrame:
 
 
 def assert_no_tier_leakage(feature_columns: list[str], tier: str, dataset: str) -> None:
-    """Sanity-check assertion (Decision #19): fail loudly if a Tier B column
-    ends up in a Tier A feature matrix, or vice versa."""
+    """Sanity-check assertion: fail loudly if a Tier B column ends up in a
+    Tier A feature matrix, or vice versa — a silent leak here would
+    quietly turn a genuine pre-execution prediction claim into a circular
+    one, without necessarily showing up as an obvious symptom in any
+    headline metric."""
     if dataset == "fdata":
         tier_a, tier_b = FDATA_TIER_A_COLUMNS, FDATA_TIER_B_COLUMNS
     else:
@@ -324,7 +334,7 @@ def assert_no_tier_leakage(feature_columns: list[str], tier: str, dataset: str) 
     assert not leaked, f"Tier leakage detected in Tier {tier} features ({dataset}): {leaked}"
 
 
-# --- Failed/cancelled job exclusion (Decision #4) --------------------------
+# --- Failed/cancelled job exclusion ------------------------------------
 # F-DATA's "exit state" is a clean binary (completed/failed). PM100's
 # job_state has 6 values (COMPLETED, FAILED, CANCELLED, TIMEOUT,
 # OUT_OF_MEMORY, NODE_FAIL) — only COMPLETED reflects real workload
@@ -337,9 +347,8 @@ _COMPLETED_FILTER: dict[str, tuple[str, str]] = {
 
 
 def filter_completed_jobs(df: pd.DataFrame, dataset: str) -> pd.DataFrame:
-    """Exclude non-completed jobs (Decision #4). Returns a copy; also
-    logs the exclusion rate since the thesis needs to report it, not just
-    silently drop rows."""
+    """Exclude non-completed jobs. Returns a copy; also logs the exclusion
+    rate since the thesis needs to report it, not just silently drop rows."""
     column, value = _COMPLETED_FILTER[dataset]
     kept = df[df[column] == value].copy()
     excluded_frac = 1 - len(kept) / len(df) if len(df) else 0.0
@@ -348,18 +357,19 @@ def filter_completed_jobs(df: pd.DataFrame, dataset: str) -> pd.DataFrame:
     return kept
 
 
-# --- Embedding dimensionality reduction (Decision #7) -----------------------
+# --- Embedding dimensionality reduction --------------------------------
 # F-DATA only — PM100 has no job-name embedding field.
 #
 # Option C (confirmed): the PCA-reduced embedding is used EVERYWHERE — tree
-# models and FNN/LSTM/TCN alike. The plan's original Decision #7 language
-# ("FNN/LSTM/TCN can take the full embedding or a smaller learned
-# projection") is intentionally narrowed here: the full 384-dim embedding
-# is never loaded for more than one file/sample at a time, for any model
-# family. This keeps the memory profile safe unconditionally, at the cost
-# of not giving the DL models the option of the raw embedding — judged an
-# acceptable trade given the uncertain payoff (SHAP/ablation, Decisions
-# #9/#20, will show whether the retained components matter at all).
+# models and FNN/LSTM/TCN alike. The original plan's allowance for
+# FNN/LSTM/TCN to take the full embedding or a smaller learned projection
+# is intentionally narrowed here: the full 384-dim embedding is never
+# loaded for more than one file/sample at a time, for any model family.
+# This keeps the memory profile safe unconditionally, at the cost of not
+# giving the DL models the option of the raw embedding — judged an
+# acceptable trade given the uncertain payoff: future SHAP/permutation-
+# importance analysis and a feature-ablation study will show whether the
+# retained components matter at all.
 #
 # IMPORTANT — memory: loading F-DATA's raw `embedding` column for all ~26M
 # rows at once measured at ~100GB+ RSS (each row holds an individually
@@ -460,7 +470,7 @@ def add_user_rolling_stat(
     return out.sort_index()
 
 
-# --- Stratified sampling by job-size bucket (Decision #10) ------------------
+# --- Stratified sampling by job-size bucket ---------------------------------
 # Draws a fixed-size sample from an ALREADY-SPLIT frame (train or test),
 # never from the full pre-split data — stratifying before splitting could
 # let the draw disturb which rows fall before/after the chronological
@@ -558,12 +568,12 @@ def build_fdata_numeric_matrix(
     return out
 
 
-# --- Target transforms (Decision #3) ----------------------------------------
+# --- Target transforms -------------------------------------------------
 # Heavy-tailed targets (execution time, memory, power) are trained on in
 # log-space; metrics get reported in both log-space and back-transformed
 # real units. Kept as named functions (not inline np.log1p/np.expm1) so the
-# round-trip sanity check (Decision #19, src/metrics.py) checks the exact
-# functions actually used in the pipeline.
+# round-trip sanity check (src/metrics.py) checks the exact functions
+# actually used in the pipeline.
 
 def transform_target(values: np.ndarray) -> np.ndarray:
     """log1p — requires non-negative input; targets here (time/memory/power) always are."""

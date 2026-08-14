@@ -1,4 +1,4 @@
-"""Experiment config loading (Decision #11: versioned config per experiment).
+"""Experiment config loading.
 
 Each run should load its hyperparameters/settings from a YAML file under
 configs/, and that file should be saved alongside its results so any
@@ -21,6 +21,9 @@ def load_config(name: str) -> dict[str, Any]:
 
 @dataclass
 class Seeds:
-    """Fixed seeds for reproducibility (Decision #11) and multi-seed
-    significance testing (Decision #6)."""
+    """Fixed seeds — used both to make individual runs reproducible, and to
+    repeat training across multiple seeds so a paired significance test
+    (Wilcoxon signed-rank) can back up any claim that one model beats
+    another, rather than trusting a single point-estimate difference that
+    could just be noise."""
     values: tuple[int, ...] = (0, 1, 2, 3, 4)

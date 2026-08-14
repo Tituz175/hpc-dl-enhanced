@@ -9,7 +9,10 @@ import numpy as np
 
 
 def plot_target_distribution(raw: np.ndarray, log_transformed: np.ndarray, target_name: str):
-    """Raw vs. log1p-transformed target distribution (motivates Decision #3)."""
+    """Raw vs. log1p-transformed target distribution, side by side — meant to
+    make the heavy right tail (many short/small jobs, a handful of huge
+    ones) visible directly, which is why these targets get trained on in
+    log-space rather than raw units."""
     fig, axes = plt.subplots(1, 2, figsize=(10, 4))
     axes[0].hist(raw, bins=50)
     axes[0].set_title(f"{target_name} (raw)")

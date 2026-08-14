@@ -1,4 +1,4 @@
-"""Naive/trivial baseline predictor (Decision #17).
+"""Naive/trivial baseline predictor.
 
 Predicts each test-period job's target as that job's user's historical
 median, computed from the training period only — a floor showing how

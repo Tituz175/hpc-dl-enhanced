@@ -1,8 +1,15 @@
-"""Evaluation metrics (Decision #8) and statistical rigor helpers (Decision #6).
+"""Evaluation metrics, plus statistical rigor helpers for when a
+point-estimate difference in those metrics between two models isn't
+enough on its own to trust — it could just be noise.
 
-Headline metrics: MAE, RMSE, R², MAPE — computed in both log-space and
-back-transformed real units (Decision #3), plus stratified breakdowns by
-job-size bucket and (for PM100) CPU-only vs. GPU jobs.
+Headline metrics: MAE, RMSE, R², MAPE — computed in both log-space
+(matching how these heavy-tailed targets are actually trained on) and
+back-transformed real units (for interpretability). Heavy tails also make
+plain MAE/RMSE easy to dominate with a handful of huge jobs and can make
+R² look deceptively high, so stratified breakdowns by job-size bucket and
+(for PM100) CPU-only vs. GPU jobs are reported alongside the aggregate
+numbers, to show where the error is concentrated rather than just how
+much there is.
 """
 import numpy as np
 from scipy import stats
@@ -20,13 +27,17 @@ def regression_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, floa
 
 
 def expm1_round_trip_check(x: np.ndarray, atol: float = 1e-8) -> None:
-    """Sanity-check assertion (Decision #19): log1p/expm1 must round-trip."""
+    """Sanity-check assertion: log1p/expm1 must round-trip. A silent bug in
+    this custom transform would quietly invalidate every downstream metric
+    without producing an obvious symptom, so it's checked directly rather
+    than assumed to work."""
     recovered = np.expm1(np.log1p(x))
     assert np.allclose(x, recovered, atol=atol), "log1p/expm1 round-trip failed"
 
 
 def paired_significance_test(errors_a: np.ndarray, errors_b: np.ndarray) -> dict[str, float]:
     """Wilcoxon signed-rank test between two models' per-job/per-fold absolute
-    errors (Decision #6) — use before claiming one model 'beats' another."""
+    errors — point-estimate differences in MAE/RMSE/R² between models can
+    just be noise, so run this before claiming one model 'beats' another."""
     statistic, p_value = stats.wilcoxon(errors_a, errors_b)
     return {"statistic": float(statistic), "p_value": float(p_value)}

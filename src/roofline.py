@@ -1,4 +1,4 @@
-"""Analytical baselines (Decision #15).
+"""Analytical baselines.
 
 F-DATA: Hierarchical Roofline (Yang et al. 2019), computed from A64FX's
 published peak specs and F-DATA's own measured flops/mbwidth/opint fields.
@@ -103,7 +103,9 @@ def hierarchical_roofline_fdata(df: pd.DataFrame) -> pd.DataFrame:
 @dataclass
 class PM100PowerModelCoefficients:
     """Calibrated coefficients — fit once on a training-period-only
-    calibration subset, then frozen before validation/test (Decision #15)."""
+    calibration subset, then frozen before validation/test, so this stays
+    a genuine analytical baseline with only its coefficients calibrated to
+    data, not a disguised end-to-end regression."""
     p_idle: float
     alpha: float  # per allocated core (job-total)
     beta: float  # per allocated GPU (job-total)
