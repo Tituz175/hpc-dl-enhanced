@@ -19,6 +19,8 @@ mlruns/
 # Jupyter
 .ipynb_checkpoints/
 */.ipynb_checkpoints/*
+roofline_explainer.ipynb
+
 
 # Python
 __pycache__/

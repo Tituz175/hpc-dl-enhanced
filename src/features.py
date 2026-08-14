@@ -131,6 +131,17 @@ def assert_mszl_sanitized(df: pd.DataFrame) -> None:
     guards against a future refactor silently reintroducing the bug."""
     assert (df["mszl"] < 1e15).all(), "mszl still contains sentinel-scale (>=1e15) values"
 
+
+def assert_avgpcon_is_job_total(df: pd.DataFrame, corr_threshold: float = 0.9) -> None:
+    """Sanity-check assertion: fail loudly if avgpcon's correlation with
+    nnuma drops below threshold -- guards against a future data refresh
+    silently changing this field's semantics back to genuinely per-node."""
+    corr = df["avgpcon"].corr(df["nnuma"])
+    assert corr >= corr_threshold, (
+        f"avgpcon-nnuma correlation ({corr:.4f}) fell below {corr_threshold} -- "
+        "check whether avgpcon is still a job-total quantity."
+    )
+
 # --- PM100 ----------------------------------------------------------------
 # No "used" memory field exists at all (only requested/allocated) — so
 # PM100's memory target is necessarily mem_alloc, the Decision #2 fallback
