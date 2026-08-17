@@ -568,6 +568,61 @@ def build_fdata_numeric_matrix(
     return out
 
 
+# --- Model-ready numeric matrix for PM100 Tier A (notebook 05 Part 2) -------
+# Structurally simpler than build_fdata_numeric_matrix: no embedding step
+# at all (PM100 has no job-name field), and no dedicated sentinel-handler
+# needed (num_tasks's missingness is ordinary incomplete logging, already
+# carried by the promoted num_tasks_missing flag, not a disguised sentinel
+# the way mszl was). Real dtypes/cardinalities confirmed directly against
+# the completed-jobs-filtered dataframe, not assumed:
+# - user_id (427 distinct): frequency-encoded, like F-DATA's usr -- the
+#   raw int has no meaningful magnitude, it's an arbitrary ID.
+# - group_id/partition/qos/shared (5/3/8/2 distinct): all factorized --
+#   group_id is the same kind of arbitrary ID as user_id, just lower
+#   cardinality, so it gets the same categorical treatment as the other
+#   three rather than being passed through as a raw number.
+# - submit_time/eligible_time: epoch seconds via datetime_to_epoch_seconds
+#   (already generic/robust to storage-unit differences, no new bug here).
+# - priority/time_limit/num_cores_req/num_nodes_req/num_gpus_req/mem_req/
+#   cores_per_task/num_tasks: plain numeric passthrough -- checked min/max
+#   for all of these directly, no sentinel-looking values (nothing near a
+#   uint64-max pattern the way mszl was).
+
+PM100_TIER_A_NUMERIC_PASSTHROUGH: list[str] = [
+    "priority", "time_limit", "num_cores_req", "num_nodes_req",
+    "num_gpus_req", "mem_req", "cores_per_task", "num_tasks",
+]
+PM100_TIER_A_DATETIME_COLUMNS: list[str] = ["submit_time", "eligible_time"]
+PM100_TIER_A_CATEGORICAL_COLUMNS: list[str] = ["partition", "qos", "shared", "group_id"]
+
+
+def build_pm100_numeric_matrix(
+    tier_a_df: pd.DataFrame, extra_columns: pd.DataFrame | None = None
+) -> pd.DataFrame:
+    """Fully numeric Tier A feature matrix for PM100, ready for RF/XGBoost/
+    LightGBM, mirroring build_fdata_numeric_matrix's pattern. `tier_a_df`
+    must already be the output of build_tier_a_features (which itself
+    requires add_pm100_derived_indicators to have run first, so
+    num_tasks_missing exists). `extra_columns` is for the target-specific
+    rolling-stat column, same role as in the F-DATA version. Caller is
+    responsible for filling remaining NaNs (num_tasks has real missing
+    values) -- this function does not call fillna itself, same convention
+    as build_fdata_numeric_matrix."""
+    out = pd.DataFrame(index=tier_a_df.index)
+    for col in PM100_TIER_A_NUMERIC_PASSTHROUGH:
+        out[col] = tier_a_df[col].to_numpy(dtype=float)
+    out["num_tasks_missing"] = tier_a_df["num_tasks_missing"].astype(int)
+    for col in PM100_TIER_A_DATETIME_COLUMNS:
+        out[f"{col}_epoch"] = datetime_to_epoch_seconds(tier_a_df[col])
+    for col in PM100_TIER_A_CATEGORICAL_COLUMNS:
+        out[f"{col}_code"] = pd.factorize(tier_a_df[col])[0]
+    user_counts = tier_a_df["user_id"].value_counts()
+    out["user_id_freq"] = tier_a_df["user_id"].map(user_counts).to_numpy(dtype=float)
+    if extra_columns is not None:
+        out = pd.concat([out, extra_columns.reindex(out.index)], axis=1)
+    return out
+
+
 # --- Target transforms -------------------------------------------------
 # Heavy-tailed targets (execution time, memory, power) are trained on in
 # log-space; metrics get reported in both log-space and back-transformed
