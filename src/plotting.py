@@ -6,6 +6,7 @@ generate the thesis's figures.
 """
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 
 def plot_target_distribution(raw: np.ndarray, log_transformed: np.ndarray, target_name: str):
@@ -84,5 +85,66 @@ def plot_roofline(
     ax.set_ylabel("Performance (FLOP/s, per node)")
     ax.set_title(title)
     ax.legend(fontsize=8)
+    fig.tight_layout()
+    return fig
+
+
+def plot_model_comparison(summary_df: pd.DataFrame, title: str = "Model comparison"):
+    """R²/MAPE side by side across models (notebook 05) — two panels
+    rather than one chart, since R² (unitless, roughly [-1, 1]) and MAPE
+    (a percentage, often well over 100% for heavy-tailed targets) sit on
+    incompatible scales. Same model order in both panels so a model that
+    wins on one metric and loses on the other — the recurring R²-vs-MAPE
+    disagreement seen on both F-DATA and PM100 — is visible at a glance
+    rather than hidden by picking a single metric to plot. `summary_df`
+    is indexed by model name with "R2"/"MAPE" columns, the same frame
+    already built for the printed results table."""
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    x = np.arange(len(summary_df))
+    for ax, col, label in [(axes[0], "R2", "R²"), (axes[1], "MAPE", "MAPE (%)")]:
+        ax.bar(x, summary_df[col])
+        ax.set_xticks(x)
+        ax.set_xticklabels(summary_df.index, rotation=20, ha="right")
+        ax.set_title(label)
+        ax.axhline(0, color="gray", linewidth=0.8)
+    fig.suptitle(title)
+    fig.tight_layout()
+    return fig
+
+
+def plot_feature_importance_comparison(
+    gain_importance: pd.Series, shap_importance: pd.Series,
+    title: str = "Feature importance", top_n: int = 10,
+):
+    """Gain-based feature_importances_ vs. SHAP mean |value|, side by
+    side, ranked by SHAP — the more trustworthy metric when one feature
+    dominates early splits (gain systematically starves other features'
+    credit in that case, notebook 05's PM100 finding). Same feature
+    order in both panels so a feature the two methods disagree about is
+    visible directly, not hidden by sorting each panel independently.
+    `gain_importance`/`shap_importance` are raw (not pre-normalized)
+    per-feature values indexed by feature name — normalized to percent
+    of total here."""
+    top_features = shap_importance.sort_values(ascending=False).head(top_n).index
+    gain_pct = gain_importance / gain_importance.sum() * 100
+    shap_pct = shap_importance / shap_importance.sum() * 100
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+    y = np.arange(len(top_features))
+    axes[0].barh(y, shap_pct.loc[top_features])
+    axes[0].set_yticks(y)
+    axes[0].set_yticklabels(top_features)
+    axes[0].invert_yaxis()
+    axes[0].set_xlabel("% of total |SHAP|")
+    axes[0].set_title("SHAP (mean |value|)")
+
+    axes[1].barh(y, gain_pct.loc[top_features])
+    axes[1].set_yticks(y)
+    axes[1].set_yticklabels(top_features)
+    axes[1].invert_yaxis()
+    axes[1].set_xlabel("% of total gain")
+    axes[1].set_title("Gain-based importance")
+
+    fig.suptitle(title)
     fig.tight_layout()
     return fig
