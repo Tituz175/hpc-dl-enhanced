@@ -135,6 +135,58 @@ def assert_mszl_sanitized(df: pd.DataFrame) -> None:
     assert (df["mszl"] < 1e15).all(), "mszl still contains sentinel-scale (>=1e15) values"
 
 
+# --- avgpcon / minpcon / maxpcon corruption guard -------------------------
+# Found 2026-08-27 on the full-scale run (all 38 months): one completed job
+# in 21_03.parquet carries a bit-corrupt avgpcon of -3.76e176 (and
+# minpcon 9.6e285). A single value that size makes std(avgpcon) overflow to
+# inf and corr(avgpcon, nnuma) collapse to ~0, which broke
+# assert_avgpcon_is_job_total. Dropping that one row restores the
+# correlation to 0.9952 across all 23.3M completed jobs, so the "avgpcon is
+# a job-wide total" finding holds — the value is corruption, not a
+# semantics change. The ~42 remaining jobs above 1e7 W in 21_03 are real:
+# near-full-system Fugaku runs (nnuma up to 158,976) from its early
+# Top500/acceptance period, with consistent minpcon < avgpcon < maxpcon and
+# econ scaling with duration; Fugaku's whole-system power is ~30 MW, so
+# 10-17 MW for those is physical. The ceiling below keeps them and nulls
+# only values outside any plausible range.
+FDATA_POWER_CEILING_WATTS: float = 3.5e7  # Fugaku full-system draw (~30 MW) + margin
+FDATA_POWER_COLUMNS: list[str] = ["avgpcon", "minpcon", "maxpcon"]
+
+
+def sanitize_fdata_power(df: pd.DataFrame) -> pd.DataFrame:
+    """Set avgpcon/minpcon/maxpcon to NaN wherever they are <= 0, non-finite,
+    or above FDATA_POWER_CEILING_WATTS — a physically impossible power draw
+    is data corruption, not a measurement. NaN (not 0.0, unlike
+    handle_mszl_sentinel) because avgpcon is the F-DATA power *target*: a
+    corrupt row should drop out of power-model training via the usual
+    dropna, not be imputed to a fake zero. Run before build_tier_b_features
+    and before assert_avgpcon_is_job_total. Returns a copy."""
+    out = df.copy()
+    for col in FDATA_POWER_COLUMNS:
+        if col not in out.columns:
+            continue
+        bad = ~np.isfinite(out[col]) | (out[col] <= 0) | (out[col] > FDATA_POWER_CEILING_WATTS)
+        out.loc[bad, col] = np.nan
+    return out
+
+
+def assert_fdata_power_sanitized(df: pd.DataFrame) -> None:
+    """Sanity-check assertion: fail loudly if any of avgpcon/minpcon/maxpcon
+    still holds a non-finite or out-of-range value after sanitize_fdata_power
+    — guards against a future refactor silently reintroducing the 21_03
+    corruption into the power target."""
+    for col in FDATA_POWER_COLUMNS:
+        if col not in df.columns:
+            continue
+        vals = df[col].to_numpy()
+        finite = vals[np.isfinite(vals)]
+        assert (finite > 0).all() and (finite <= FDATA_POWER_CEILING_WATTS).all(), (
+            f"{col} still contains out-of-range values after sanitize_fdata_power "
+            f"(min {finite.min():.3g}, max {finite.max():.3g}; "
+            f"expected (0, {FDATA_POWER_CEILING_WATTS:.1e}] W)"
+        )
+
+
 def assert_avgpcon_is_job_total(df: pd.DataFrame, corr_threshold: float = 0.9) -> None:
     """Sanity-check assertion: fail loudly if avgpcon's correlation with
     nnuma drops below threshold -- guards against a future data refresh
