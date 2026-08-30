@@ -7,6 +7,7 @@ generate the thesis's figures.
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 
 
 def plot_target_distribution(raw: np.ndarray, log_transformed: np.ndarray, target_name: str):
@@ -147,4 +148,30 @@ def plot_feature_importance_comparison(
 
     fig.suptitle(title)
     fig.tight_layout()
+    return fig
+
+
+def plot_metrics_heatmap(summary_df, title):
+    """Heatmap of MAE/RMSE/R2/MAPE across models, each column normalized
+    independently -- these metrics live on completely different scales
+    (raw seconds/Watts, unitless R2, percent), so a shared color scale
+    would be meaningless. Green = best-in-column, not best overall."""
+    display_df = summary_df.copy()
+    normed = display_df.copy()
+    for col in display_df.columns:
+        col_min, col_max = display_df[col].min(), display_df[col].max()
+        span = col_max - col_min + 1e-12
+        if col == "R2":  # higher is better
+            normed[col] = (display_df[col] - col_min) / span
+        else:  # MAE/RMSE/MAPE -- lower is better, so invert
+            normed[col] = 1 - (display_df[col] - col_min) / span
+
+    fig, ax = plt.subplots(figsize=(6, 0.6 * len(display_df) + 1.5))
+    sns.heatmap(
+        normed, annot=display_df.round(3), fmt="", cmap="RdYlGn",
+        cbar_kws={"label": "Relative performance (green=better, per column)"},
+        linewidths=0.5, ax=ax,
+    )
+    ax.set_title(title)
+    plt.tight_layout()
     return fig
