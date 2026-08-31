@@ -183,48 +183,57 @@ def plot_feature_importance_comparison(
 
 _HIGHER_IS_BETTER = {"R2", "Within20pct"}
 
+_HEATMAP_DEV_CAP = 15.0  # % deviation from best at which a cell is fully red
 
-_HEATMAP_CLR_LO, _HEATMAP_CLR_HI = 0.15, 0.85
 
+def plot_metrics_heatmap(summary_df, title, exclude_from_scale=None):
+    """Heatmap of MAE/RMSE/R2/MAPE/MedAE/Within20pct across models.
 
-def plot_metrics_heatmap(summary_df, title):
-    """Heatmap of MAE/RMSE/R2/MAPE/MedAE/Within20pct across models, each
-    column normalised independently (min-max, inverted for the
-    lower-is-better metrics) — these metrics live on completely different
-    scales, so a shared colour scale across columns would be meaningless.
+    Colour encodes how far each cell is from the best value in its
+    column, as a percentage: 0% (the best) is full green, ≥ 15% worse is
+    full red, linear between. "Best" and the 15% span are computed only
+    over the *scale-setting* rows — every row named in
+    `exclude_from_scale` is still shown and still coloured (by its own %
+    deviation from the scale-setting group's best), it just doesn't get a
+    vote in where the scale's endpoints land. This keeps a trivial floor
+    like the naive baseline, or notebook 03's Roofline, from flattening
+    the colours of the models actually being compared.
 
-    The single worst model (lowest R²) is kept in the grid and annotated
-    with its real values, but excluded from the min/max that sets each
-    column's colour range: otherwise a trivial floor like the naive
-    baseline stretches the scale so far that the real models all render
-    as the same shade of green. Its own cells then clip to the extreme.
-    Normalised values are then compressed into [0.15, 0.85] of the
-    colormap so nothing is fully saturated.
+    Annotation text is the real, unchanged raw value, always white. No
+    colourbar — a caption states what the colour means."""
+    import matplotlib as mpl
 
-    No colourbar: the numbers on it were never meaningful across the
-    whole grid (each column has its own scale). A caption states the only
-    thing the colour actually means. Cells are annotated with the real,
-    unchanged raw metric values."""
+    exclude_from_scale = list(exclude_from_scale or [])
     display_df = summary_df.copy()
-    worst = display_df["R2"].idxmin() if "R2" in display_df.columns else None
-    scale_df = display_df.drop(index=worst) if worst is not None and len(display_df) > 2 else display_df
+    scale_rows = [r for r in display_df.index if r not in exclude_from_scale]
+    scale_df = display_df.loc[scale_rows] if scale_rows else display_df
 
-    normed = display_df.copy()
+    frac = pd.DataFrame(index=display_df.index, columns=display_df.columns, dtype=float)
     for col in display_df.columns:
-        col_min, col_max = scale_df[col].min(), scale_df[col].max()
-        span = col_max - col_min + 1e-12
-        scaled = (display_df[col] - col_min) / span
-        normed[col] = scaled if col in _HIGHER_IS_BETTER else 1 - scaled
-    normed = normed.clip(0.0, 1.0)
-    normed = _HEATMAP_CLR_LO + (_HEATMAP_CLR_HI - _HEATMAP_CLR_LO) * normed
+        best = scale_df[col].max() if col in _HIGHER_IS_BETTER else scale_df[col].min()
+        denom = abs(best) if abs(best) > 1e-12 else 1.0
+        # Signed % deviation from the scale-setting best: positive = worse,
+        # negative = better than the whole scale-setting group (only an
+        # excluded row can reach this). Negative clamps to 0 -> full green;
+        # beating the group is never rendered as worse than the group.
+        direction = -1.0 if col in _HIGHER_IS_BETTER else 1.0
+        signed_dev = direction * (display_df[col] - best) / denom * 100.0
+        frac[col] = signed_dev.clip(lower=0.0, upper=_HEATMAP_DEV_CAP) / _HEATMAP_DEV_CAP
+    frac = frac.clip(0.0, 1.0)
 
+    cmap = mpl.colormaps["RdYlGn_r"]  # 0.0 -> green (best or better), 1.0 -> red (>= cap% worse)
+    annot_df = display_df.round(3)
     fig, ax = plt.subplots(figsize=(1.3 * len(display_df.columns) + 1, 0.6 * len(display_df) + 1.5))
-    sns.heatmap(
-        normed, annot=display_df.round(3), fmt="", cmap="RdYlGn",
-        linewidths=0.5, vmin=0, vmax=1, cbar=False, ax=ax,
-    )
+    sns.heatmap(frac, cmap=cmap, vmin=0.0, vmax=1.0, cbar=False, linewidths=0.5, ax=ax)
+    for i, row in enumerate(display_df.index):
+        for j, col in enumerate(display_df.columns):
+            ax.text(j + 0.5, i + 0.5, f"{annot_df.loc[row, col]}",
+                    ha="center", va="center", fontsize=9, color="white")
     ax.set_title(title)
-    ax.text(0.5, -0.18, "Color: green = better, red = worse (relative to other models in each column)",
+    _excl = ", ".join(exclude_from_scale) if exclude_from_scale else "none"
+    ax.text(0.5, -0.18,
+            f"Color: % worse than the best scale-setting model in each column "
+            f"(green = best, red ≥ {int(_HEATMAP_DEV_CAP)}%). Excluded from the scale: {_excl}.",
             transform=ax.transAxes, ha="center", va="top", fontsize=8, style="italic")
     fig.tight_layout()
     return fig
