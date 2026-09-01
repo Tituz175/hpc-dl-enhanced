@@ -332,3 +332,76 @@ def plot_error_by_size_bucket(
         tick.set_ha("right")
     fig.tight_layout()
     return fig
+
+
+# --- Feature correlation diagnostics ----------------------------------
+# Two related views used both early (notebook 02, raw candidate columns)
+# and late (notebook 05, the final model-input matrix):
+#   plot_feature_target_correlation  -- how strongly each feature moves
+#       with the target on its own (a redundancy/signal screen, an
+#       extension of the four-check feature-vetting method's redundancy
+#       step).
+#   plot_feature_correlation_heatmap -- feature-vs-feature correlation,
+#       the thing that makes individual linear-model coefficients
+#       unstable / sign-flipped even when predictions are fine (see
+#       notebook 03's negative PM100 power coefficients).
+# Correlation is a genuinely shared -1..+1 scale, so unlike
+# plot_metrics_heatmap these DO get a real colourbar.
+
+_CORR_CMAP = "coolwarm"
+
+
+def plot_feature_target_correlation(feature_df, target, title, method: str = "pearson"):
+    """Bar chart of each feature's correlation with `target`, sorted by
+    absolute strength (strongest at the top). `feature_df` is a DataFrame
+    of numeric feature columns; `target` is a 1-D array/Series aligned to
+    its rows (the RAW target at this stage -- not log-transformed).
+    Correlations are pairwise-complete (NaNs dropped per column). Bars are
+    coloured by sign on the same colormap as the heatmap."""
+    feats = feature_df.apply(pd.to_numeric, errors="coerce")
+    tgt = pd.Series(np.asarray(target, dtype=float), index=feature_df.index)
+    corr = feats.corrwith(tgt, method=method).dropna()
+    corr = corr.reindex(corr.abs().sort_values(ascending=False).index)
+
+    cmap = plt.get_cmap(_CORR_CMAP)
+    colors = [cmap(0.5 * (v + 1.0)) for v in corr.to_numpy()]
+
+    fig, ax = plt.subplots(figsize=(7, 0.45 * len(corr) + 1.5))
+    y = np.arange(len(corr))[::-1]  # strongest at the top
+    ax.barh(y, corr.to_numpy(), color=colors, edgecolor="#444444", linewidth=0.4)
+    ax.set_yticks(y)
+    ax.set_yticklabels(corr.index)
+    ax.axvline(0.0, color="#444444", linewidth=0.8)
+    ax.set_xlim(-1.0, 1.0)
+    ax.set_xlabel(f"{method.capitalize()} correlation with target (raw)")
+    ax.set_title(title)
+    for yi, v in zip(y, corr.to_numpy()):
+        ax.text(v + (0.03 if v >= 0 else -0.03), yi, f"{v:+.2f}",
+                va="center", ha="left" if v >= 0 else "right", fontsize=8)
+    fig.tight_layout()
+    return fig
+
+
+def plot_feature_correlation_heatmap(feature_df, title, method: str = "pearson"):
+    """Seaborn heatmap of the feature-vs-feature correlation matrix on a
+    fixed -1..+1 scale, with a real colourbar. Cells are annotated when
+    the matrix is small enough (<= 20 features) to stay legible.
+    Pairwise-complete correlations (NaNs dropped per column pair)."""
+    feats = feature_df.apply(pd.to_numeric, errors="coerce")
+    corr = feats.corr(method=method)
+
+    n = corr.shape[0]
+    annot = n <= 20
+    fig, ax = plt.subplots(figsize=(0.62 * n + 3, 0.55 * n + 2.5))
+    sns.heatmap(
+        corr, cmap=_CORR_CMAP, vmin=-1.0, vmax=1.0, center=0.0,
+        annot=annot, fmt=".2f", annot_kws={"fontsize": 7},
+        linewidths=0.5, square=True, ax=ax,
+        cbar_kws={"label": f"{method.capitalize()} correlation", "shrink": 0.8},
+    )
+    ax.set_title(title)
+    for tick in ax.get_xticklabels():
+        tick.set_rotation(45)
+        tick.set_ha("right")
+    fig.tight_layout()
+    return fig
