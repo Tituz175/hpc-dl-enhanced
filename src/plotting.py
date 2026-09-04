@@ -382,16 +382,31 @@ def plot_feature_target_correlation(feature_df, target, title, method: str = "pe
     return fig
 
 
-def plot_feature_correlation_heatmap(feature_df, title, method: str = "pearson"):
+def plot_feature_correlation_heatmap(
+    feature_df, title, method: str = "pearson", target=None, target_name: str = "target"
+):
     """Seaborn heatmap of the feature-vs-feature correlation matrix on a
     fixed -1..+1 scale, with a real colourbar. Cells are annotated when
-    the matrix is small enough (<= 20 features) to stay legible.
-    Pairwise-complete correlations (NaNs dropped per column pair)."""
+    the matrix is small enough (<= 21 rows) to stay legible.
+    Pairwise-complete correlations (NaNs dropped per column pair).
+
+    If `target` (a 1-D array/Series aligned to `feature_df`'s rows, the
+    RAW target -- not log-transformed) is given, it is appended as one
+    more column before `corr()`, so it shows up as both the last row and
+    the last column, labelled `target_name`. That last row/col is set off
+    from the features with a heavier gridline and a bold tick label, so
+    the one predictor-vs-target strip reads distinctly from the
+    predictor-vs-predictor block above it. `plot_feature_target_correlation`
+    stays the clearer view for the plain ranked list; this is the full
+    picture in one panel."""
     feats = feature_df.apply(pd.to_numeric, errors="coerce")
+    if target is not None:
+        feats = feats.copy()
+        feats[target_name] = pd.Series(np.asarray(target, dtype=float), index=feats.index)
     corr = feats.corr(method=method)
 
     n = corr.shape[0]
-    annot = n <= 20
+    annot = n <= 21
     fig, ax = plt.subplots(figsize=(0.62 * n + 3, 0.55 * n + 2.5))
     sns.heatmap(
         corr, cmap=_CORR_CMAP, vmin=-1.0, vmax=1.0, center=0.0,
@@ -403,5 +418,11 @@ def plot_feature_correlation_heatmap(feature_df, title, method: str = "pearson")
     for tick in ax.get_xticklabels():
         tick.set_rotation(45)
         tick.set_ha("right")
+    if target is not None:
+        # visually separate the target strip from the feature block
+        ax.axhline(n - 1, color="#222222", linewidth=2.0)
+        ax.axvline(n - 1, color="#222222", linewidth=2.0)
+        for tick in (ax.get_xticklabels()[-1], ax.get_yticklabels()[-1]):
+            tick.set_fontweight("bold")
     fig.tight_layout()
     return fig
