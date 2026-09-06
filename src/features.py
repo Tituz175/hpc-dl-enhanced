@@ -197,6 +197,26 @@ def assert_avgpcon_is_job_total(df: pd.DataFrame, corr_threshold: float = 0.9) -
         "check whether avgpcon is still a job-total quantity."
     )
 
+
+def resolve_fdata_memory_target(df: pd.DataFrame) -> pd.DataFrame:
+    """mmszu (used memory) is the memory target; msza (allocated) is the
+    documented fallback for when mmszu is null. As of the full 23.3M-row
+    completed-jobs population, mmszu has ZERO nulls, so this fallback is
+    currently a no-op in practice -- implemented anyway because (a) the
+    module comment already promises it and a promise with no function
+    behind it is a landmine for whoever reads the comment next, and
+    (b) a future data refresh could reintroduce nulls. Returns a copy
+    with a new `mmszu_resolved` column; asserts the result has no nulls
+    so a silent all-null failure can't slip through. NOTE: msza itself
+    carries the same 2**64-1 sentinel as mszl (87.45% of rows) -- not
+    sanitized here since the fallback never fires today, but any future
+    path that actually uses msza values (not just as a fallback source)
+    must sanitize it first, the same way handle_mszl_sentinel does."""
+    out = df.copy()
+    out["mmszu_resolved"] = out["mmszu"].fillna(out["msza"])
+    assert out["mmszu_resolved"].notna().all(), "mmszu_resolved still has nulls after msza fallback"
+    return out
+
 # --- PM100 ----------------------------------------------------------------
 # No "used" memory field exists at all (only requested/allocated) — so
 # PM100's memory target is necessarily mem_alloc — the fallback case, not
