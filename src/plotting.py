@@ -40,25 +40,40 @@ def plot_target_distribution(raw: np.ndarray, log_transformed: np.ndarray, targe
     """Raw vs. log1p-transformed target distribution, side by side — meant to
     make the heavy right tail (many short/small jobs, a handful of huge
     ones) visible directly, which is why these targets get trained on in
-    log-space rather than raw units."""
+    log-space rather than raw units.
+
+    Drawn with seaborn's histplot for consistent styling with the rest of
+    the module. The raw panel's x-axis is forced into scientific notation:
+    raw watts/bytes/seconds run into the hundreds of thousands or higher,
+    and matplotlib's default formatter writes those out in full, so the
+    tick labels overrun each other. A shared exponent in the corner keeps
+    them legible. The log1p panel is left on the default formatter — its
+    values sit in single or low double digits."""
     fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-    axes[0].hist(raw, bins=50)
+    sns.histplot(x=raw, bins=50, ax=axes[0])
     axes[0].set_title(f"{target_name} (raw)")
-    axes[1].hist(log_transformed, bins=50)
+    axes[0].ticklabel_format(style="sci", axis="x", scilimits=(0, 0))
+    sns.histplot(x=log_transformed, bins=50, ax=axes[1])
     axes[1].set_title(f"{target_name} (log1p)")
     fig.tight_layout()
     return fig
 
 
 def plot_predicted_vs_actual(y_true: np.ndarray, y_pred: np.ndarray, title: str):
-    """Regression analog of a confusion matrix (Track B5)."""
+    """Regression analog of a confusion matrix (Track B5). Drawn with
+    seaborn's scatterplot for styling consistency with the rest of the
+    module; the dashed red line is the ideal y = x, not a fitted line."""
+    y_true = np.asarray(y_true, dtype=float)
+    y_pred = np.asarray(y_pred, dtype=float)
     fig, ax = plt.subplots(figsize=(5, 5))
-    ax.scatter(y_true, y_pred, alpha=0.3, s=8)
+    sns.scatterplot(x=y_true, y=y_pred, alpha=0.3, s=8, edgecolor="none",
+                    color=MODEL_COLORS["RandomForest"], ax=ax)
     lims = [min(y_true.min(), y_pred.min()), max(y_true.max(), y_pred.max())]
     ax.plot(lims, lims, "r--", linewidth=1)
     ax.set_xlabel("Actual")
     ax.set_ylabel("Predicted")
     ax.set_title(title)
+    fig.tight_layout()
     return fig
 
 
@@ -73,7 +88,8 @@ def plot_residuals(y_true: np.ndarray, y_pred: np.ndarray, title: str):
     residuals = y_true - y_pred
     pos = y_true > 0  # log x-axis needs strictly positive actuals
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.scatter(y_true[pos], residuals[pos], alpha=0.1, s=6, edgecolors="none")
+    sns.scatterplot(x=y_true[pos], y=residuals[pos], alpha=0.1, s=6,
+                    edgecolor="none", color=MODEL_COLORS["RandomForest"], ax=ax)
     ax.axhline(0, color="r", linestyle="--", linewidth=1)
     ax.set_xscale("log")
     ax.set_xlabel("Actual")
