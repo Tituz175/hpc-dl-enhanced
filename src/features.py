@@ -63,8 +63,10 @@ FDATA_TIER_A_COLUMNS: list[str] = [
     "qdt",          # time of insertion in job queue (pre-execution)
     "schedsdt",     # time of completed scheduling choice (still pre-execution)
     "elpl",         # elapsed time limit requested
-    "mszl",         # memory size limit requested (sentinel-sanitized — see handle_mszl_sentinel)
-    "mszl_unlimited",  # True where mszl was the "no limit requested" sentinel
+    "mszl",         # official F-DATA description: "Memory size limit for the job."
+                    # ("requested" is our own assumption, not stated in that description --
+                    # sentinel-sanitized, see handle_mszl_sentinel)
+    "mszl_unlimited",  # True where mszl was the "no limit set" sentinel
     "pri",          # priority
     "jobenv_req",   # job environment requested
     "freq_req",     # node frequency requested
@@ -99,14 +101,16 @@ FDATA_TARGETS: dict[str, str] = {
 }
 
 # --- mszl sentinel handling -------------------------------------------------
-# `mszl` (memory size limit requested, Tier A) turns out to use an
-# unsigned-int sentinel for "no limit requested" rather than a null: found
+# `mszl` (Tier A) — official F-DATA description: "Memory size limit for the
+# job." ("requested" below is our own assumption about what sets that
+# limit, not stated in that description.) It turns out to use an
+# unsigned-int sentinel for "no limit set" rather than a null: found
 # 2026-07-31 while scratch-timing notebook 05's SAMPLE_SIZE decision, when
 # it broke XGBoost/LightGBM's histogram binning (see EXPERIMENT_TRACKER.md
 # Data Gotchas). Verified against the 6-month dev slice: 99.5% of rows
 # (2,882,158 / 2,897,734) sit exactly at 2**64 - 1; the rest have real
-# requested limits spanning ~1e9-3e10 (bytes) — a 10-order-of-magnitude
-# range if the sentinel is left mixed in raw.
+# limits spanning ~1e9-3e10 (bytes) — a 10-order-of-magnitude range if the
+# sentinel is left mixed in raw.
 MSZL_SENTINEL: float = float(2**64 - 1)
 
 
@@ -115,7 +119,7 @@ def handle_mszl_sentinel(df: pd.DataFrame) -> pd.DataFrame:
     sanitized numeric mszl column. Sentinel rows get mszl set to 0.0 (not
     NaN) so the numeric column stays finite and directly usable by RF
     without a separate imputation step — mszl_unlimited alone carries the
-    "no limit requested" signal for every model family (RF/XGBoost/
+    "no limit set" signal for every model family (RF/XGBoost/
     LightGBM all handle a binary flag natively). Returns a copy of df with
     both columns present; only `mszl_unlimited` needs adding to
     FDATA_TIER_A_COLUMNS (mszl itself already lists there), and this must
@@ -133,6 +137,31 @@ def assert_mszl_sanitized(df: pd.DataFrame) -> None:
     uint64-sentinel-scale values after handle_mszl_sentinel — guards
     against a future refactor silently reintroducing the bug."""
     assert (df["mszl"] < 1e15).all(), "mszl still contains sentinel-scale (>=1e15) values"
+
+
+# --- msza sentinel handling --------------------------------------------------
+# `msza` (memory allocated, Tier B) carries the same 2**64-1 sentinel as
+# `mszl` — flagged as a landmine in EXPERIMENT_TRACKER.md's Data Gotchas
+# (2026-09-04) when the mmszu-falls-back-to-msza rule was checked and found
+# to never actually fire, so the sentinel had caused no harm until now.
+# It matters here: the F-DATA power calibrated model (added 2026-09-21)
+# uses msza as a predictor, so it needs the same split-into-flag-plus-
+# sanitized-numeric treatment mszl already got, not a fresh design.
+def handle_msza_sentinel(df: pd.DataFrame) -> pd.DataFrame:
+    """Split msza into a clean boolean flag (msza_unlimited) plus a
+    sanitized numeric msza column, same treatment as handle_mszl_sentinel.
+    Sentinel rows get msza set to 0.0 (not NaN)."""
+    out = df.copy()
+    is_sentinel = out["msza"] >= 1e15
+    out["msza_unlimited"] = is_sentinel
+    out.loc[is_sentinel, "msza"] = 0.0
+    return out
+
+
+def assert_msza_sanitized(df: pd.DataFrame) -> None:
+    """Sanity-check assertion: fail loudly if msza still contains
+    uint64-sentinel-scale values after handle_msza_sentinel."""
+    assert (df["msza"] < 1e15).all(), "msza still contains sentinel-scale (>=1e15) values"
 
 
 # --- avgpcon / minpcon / maxpcon corruption guard -------------------------
