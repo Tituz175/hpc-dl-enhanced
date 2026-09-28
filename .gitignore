@@ -1,4 +1,4 @@
-# Data (raw and derived) — too large for git, never commit
+# Data (raw and derived) -- too large for git, never commit
 data/raw/
 data/processed/
 data/interim/
@@ -52,6 +52,14 @@ Thumbs.db
 *.log
 logs/
 
-# Personal working notes — not versioned project artifacts
+# Personal working notes -- not versioned project artifacts
 EXPERIMENT_TRACKER.md
 WRITING_TRACKER.md
+
+# Thesis draft in progress -- not the final version, not for the public repo
+writing/build_thesis_doc.py
+writing/thesis_draft_notes.docx
+
+# Curated results ledger -- meant to be committed and reviewed, unlike the
+# raw/derived-data CSVs the blanket *.csv rule above is for
+!results/*.csv
