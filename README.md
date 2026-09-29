@@ -35,22 +35,26 @@ The FLOP-data gap is why the two systems get different analytical treatments rat
 
 ## Results so far
 
-Four of the six target/dataset combinations are done.
+All six target/dataset combinations are done.
 
 | Target | Dataset | Analytical baseline | Best classical ML |
 |---|---|---|---|
 | Execution time | F-DATA | Roofline, R² = -0.16 | XGBoost, R² = 0.84 |
-| Power | PM100 | Calibrated model, R² = 0.91 | XGBoost, R² = 0.92 |
+| Execution time | PM100 | none possible (no FLOP/bandwidth fields) | LightGBM, R² = 0.70 |
+| Power | F-DATA | Calibrated model, R² = 0.98 | XGBoost, R² = 0.99 |
+| Power | PM100 | Calibrated model, R² = 0.91 | XGBoost, R² = 0.92 &Dagger; |
 | Memory | F-DATA | none possible (no physical model for memory) | LightGBM, R² = 0.87 |
 | Memory | PM100 | none possible | XGBoost, R² = 0.97 &dagger; |
 
-The best model is not fixed. LightGBM leads F-DATA duration until extended user-history features are added, and then XGBoost takes it (0.82 to 0.84). XGBoost leads both PM100 targets. Treating "best model" as a property of the configuration rather than of the pipeline is one of the study's own conclusions.
+The best model is not fixed. LightGBM leads F-DATA duration until extended user-history features are added, and then XGBoost takes it (0.82 to 0.84). Of the remaining four: XGBoost leads F-DATA power and PM100 memory, is statistically tied with LightGBM on PM100 power, and LightGBM leads F-DATA memory and PM100 duration, the weakest-performing combination in this thesis (naive baseline R² = 0.41, best model 0.70). Treating "best model" as a property of the configuration rather than of the pipeline is one of the study's own conclusions, reinforced by a multi-seed check (5 random-seed refits per model, 3 for F-DATA Random Forest given its cost): the *top* model's ranking holds up in 5 of 6 combinations, but the runner-up ordering is only reliably established in one.
 
 &dagger; PM100 memory needed an investigation before that number could be trusted. Requested memory matched allocated memory exactly on 94% of test jobs, which let every model return a stored value instead of learning, and then miss on the 6% of jobs where request and allocation diverge, the cases prediction is actually for. Dropping the feature improved XGBoost outright. For Random Forest and LightGBM it was a deliberate trade: the full feature set scored a higher aggregate R² (0.98) but a much worse median error on the divergent jobs, 35 to 44 MB against under 1 MB. A four-feature set was adopted for all three models and re-tuned per model.
 
+&Dagger; XGBoost and LightGBM are statistically tied on PM100 power once seed variance is accounted for (seed-level R² ranges overlap); both clear Random Forest with no overlap.
+
 ## Findings worth pulling out
 
-**A hand-built formula and a model that never saw it agreed on the same variable.** The PM100 power model scales its idle-power term by node count, a choice made from hardware reasoning. Feature-importance analysis of the XGBoost model, which was given no such prior, puts requested node count at 61 to 70% of its total signal, ahead of every other feature. Power per node is close to fixed on Marconi100, so node count and power move together, and the two approaches reached it independently.
+**A hand-built formula and a model that never saw it agreed on the same variable.** The PM100 power model scales its idle-power term by node count, a choice made from hardware reasoning. Feature-importance analysis of the XGBoost model, which was given no such prior, puts requested node count at 61 to 70% of its total signal, ahead of every other feature. Power per node is close to fixed on Marconi100, so node count and power move together, and the two approaches reached it independently. LightGBM, trained separately and structurally different (leaf-wise growth instead of level-wise), lands on the same feature (SHAP 61%, gain-based importance 90%), so this is agreement between two independent model families, not an artifact of picking one to report.
 
 **Roofline's negative R² is not a broken baseline.** Recomputing each job's compute-bound or memory-bound label from Roofline first principles matches F-DATA's own label 99.97% of the time, so the construction is sound. It still scores R² = -0.16 on duration, because the ceiling assumes a job runs at peak rate for its entire wall-clock time and real jobs spend much of theirs on I/O and synchronization. Both statements hold at once.
 
@@ -60,11 +64,21 @@ The best model is not fixed. LightGBM leads F-DATA duration until extended user-
 
 **Independent validation of the Roofline construction.** Notebook 04 times four GPU kernels whose compute-bound or memory-bound regime is known in advance, and checks that the same ceiling formula and classification logic recover it. `vector_add` and `dot_product` classify memory-bound in every run; the largest matrix multiply classifies compute-bound, at 75% of the FP32 peak and 95% of the FP64 peak. This is separate from the 99.97% label agreement above. One check is against a dataset's own labels; the other is against ground truth that does not come from a dataset at all.
 
+**A library-specific bug, not a data problem, on F-DATA power.** XGBoost's histogram-based tree construction (`tree_method="hist"`, its default) catastrophically underfits F-DATA power's feature set (R² ≈ 0.31) while scoring 0.99 with exact splits (`tree_method="exact"`) at the same hyperparameters. Ruled out directly, not assumed: reproducibility, hyperparameter choice, the embedding-PCA columns, and float32/float64 precision were each tested and eliminated in turn. LightGBM's own histogram implementation shows no equivalent failure on the same data. The fix (tune with `hist`, final-fit with `exact`) cost about 59 minutes once; tuning under `exact` for all 50 trials would have cost far more.
+
+**Two fields with different definitions, identical values.** F-DATA's `mszl` ("memory size limit for the job") and `msza` ("memory allocated") are conceptually distinct, a request versus a scheduling outcome, but are byte-identical on every row checked across all 38 months, sentinel and non-sentinel values alike. Among the roughly 2.9 million non-sentinel rows, the limit takes only 21 distinct values (a small set of site-standard tiers, not a per-job custom number) and correlates weakly (0.19) with requested node/core count.
+
 ## Repository layout
 
 ```
-notebooks/   01 to 05b complete; 06 to 09 scaffolded (deep learning, hybrid, evaluation, interpretability)
+notebooks/   01 to 05d complete (all six target/dataset combinations, plus multi-seed variance);
+             06 to 09 scaffolded (deep learning, hybrid, evaluation, interpretability)
 src/         features, splits, metrics, plotting, roofline, baselines, microbench, models, config
+scripts/     decision6_seed_variance/ (multi-seed refit pipeline, one fresh process per model);
+             build_results_ledger.py (regenerates results/, reading only saved joblibs and
+             committed notebook outputs, never re-fitting); fdata_power_calibrated_baseline/
+results/     results_ledger.csv (every metric, every seed, both datasets), tuning_details.csv,
+             seed_variance.csv, investigation_log.md (diagnostics with no persisted artifact)
 writing/     thesis draft (build_thesis_doc.py builds thesis_draft_notes.docx) and its figures
 data/raw/    datasets go here; not tracked
 ```
@@ -75,8 +89,8 @@ The environment is managed with `uv`, pinned to Python 3.12 because `numba`, a S
 
 ## Status
 
-Complete: classical ML for F-DATA duration and memory, and PM100 power and memory. Not yet done: F-DATA power, and PM100 duration, which has no analytical baseline because PM100 records no FLOP data. Deep learning (feedforward, LSTM, TCN) is scoped and scaffolded but not implemented. The analytical-plus-deep-learning hybrid is scope-limited to power on PM100 and left for later.
+Complete: classical ML (Random Forest, XGBoost, LightGBM) for all six target/dataset combinations, plus a multi-seed variance check on every one of them (5 seeds generally, 3 for F-DATA Random Forest given its cost). Not yet done: paired significance testing across seeds (planned around a user-clustered bootstrap of the R² difference over test-set jobs, not a seed-level Wilcoxon test, which is underpowered by construction at 3 to 5 seeds). Deep learning (feedforward, LSTM, TCN) is scoped and scaffolded but not implemented. The analytical-plus-deep-learning hybrid is scope-limited to power on PM100 (no analytical baseline exists for PM100 duration or either dataset's memory target) and left for later.
 
 ## Reference
 
-`EXPERIMENT_TRACKER.md`, kept out of version control, holds the dated log of decisions, dead ends, and methodology notes that the notebooks refer to.
+`EXPERIMENT_TRACKER.md`, kept out of version control, holds the dated log of decisions, dead ends, and methodology notes that the notebooks refer to. Every result quoted above is also in [`results/results_ledger.csv`](results/results_ledger.csv), a long-format table (dataset, target, model, seed, space, metric, value, and source for every row) generated by [`scripts/build_results_ledger.py`](scripts/build_results_ledger.py), which reads only saved model artifacts and committed notebook outputs, never re-fitting anything. [`results/investigation_log.md`](results/investigation_log.md) covers the handful of real diagnostics that produced no artifact precise enough to put in that table. [`scripts/decision6_seed_variance/README.md`](scripts/decision6_seed_variance/README.md) covers the multi-seed pipeline: run order, the `systemd-run` launch pattern this environment requires for genuinely persistent background processes, and where each combination's `best_params` came from.

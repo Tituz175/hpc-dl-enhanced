@@ -14,6 +14,8 @@ Run in sequence. Later notebooks rely on conventions and artifacts from earlier 
 | 4 | `04_microbenchmark_validation.ipynb` | nothing | GPU-microbenchmark validation of the Roofline construction. Self-contained, feeds nothing downstream |
 | 5 | `05_classical_ml_baselines.ipynb` | 01 to 03 | F-DATA duration and PM100 power: Random Forest, XGBoost, LightGBM, tuned and evaluated |
 | 6 | `05b_classical_ml_memory.ipynb` | 01 to 03 | F-DATA memory and PM100 memory, same method, plus the requested-versus-allocated feature investigation |
+| 7 | `05c_classical_ml_power_duration.ipynb` | 01 to 03 | F-DATA power and PM100 duration, the last two of six target/dataset combinations. F-DATA power also gets a calibrated analytical baseline (`src/roofline.py`), F-DATA power's XGBoost needs `tree_method="exact"` for its final fit (a real, root-caused bug in `hist`'s binning on this feature set), and PM100 duration has no analytical baseline (no FLOP/bandwidth fields) |
+| 8 | `05d_seed_variance.ipynb` | 05, 05b, 05c | Multi-seed variance: repeats each already-tuned model's final fit across several random seeds to test whether a "best model" claim is robust to seed-to-seed stochasticity. Loads pre-computed results from `data/interim/*.joblib`; see [`scripts/decision6_seed_variance/README.md`](../scripts/decision6_seed_variance/README.md) for how those were produced |
 
 `06` to `09` (`deep_learning_models`, `hybrid_model`, `evaluation_and_statistics`, `interpretability`) are scaffolded but not yet implemented.
 
@@ -32,6 +34,7 @@ Neither dataset ships with the repo. Both are public accounting traces from thei
 - `04` needs a CUDA GPU. The rest run on CPU. Full-scale F-DATA wants a lot of RAM: the job-name embedding column alone can need more than 100 GB if loaded naively, so notebook 01 loads every other column on its own and streams the embedding one month at a time.
 - `05` and `05b` have a `SKIP_TUNING` flag (`SKIP_TUNING_PM100` for the PM100 sections). When it is set, the notebook reuses recorded best hyperparameters. A fresh Optuna search for a new target runs for hours; reusing stored parameters takes minutes. The committed outputs are real full-scale runs, not skipped ones, and carry no `injected-parameters` cell.
 - `05b` Part 2 (PM100 memory) runs in a fresh kernel, separate from Part 1. Chaining long tuning sessions in one process introduced thread-pool contention that distorted the timing numbers, so the two parts are split.
+- `05c` and `05d` load pre-computed results rather than tuning inline (`05c`'s own first attempt was killed by a genuine OOM after over 30 hours; the fix restructured tuning into one fresh, short-lived process per model instead of one long-lived kernel accumulating multiple models' state). See [`scripts/decision6_seed_variance/README.md`](../scripts/decision6_seed_variance/README.md) for the underlying pipeline and its `systemd-run --user --scope` launch pattern.
 
 ## Figures
 
