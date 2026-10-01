@@ -14,7 +14,9 @@ dependencies = [
     "xgboost",
     "lightgbm",
 
-    # Deep learning (Decisions #12, #13) — CUDA 13.0 build, see [tool.uv.sources] below
+    # Deep learning (the DL dependencies) -- CUDA 12.9 build, see [tool.uv.sources] below
+    # (repinned from cu130: the installed driver, 575.57.08, only supports up to CUDA 12.9,
+    # so a cu130-compiled torch silently reported torch.cuda.is_available() == False)
     "torch",
 
     # Hyperparameter tuning (Decision #5)
@@ -53,10 +55,10 @@ package = false  # this is a research/experiment repo, not an installable librar
 
 [tool.uv.sources]
 torch = [
-    { index = "pytorch-cu130" },
+    { index = "pytorch-cu129" },
 ]
 
 [[tool.uv.index]]
-name = "pytorch-cu130"
-url = "https://download.pytorch.org/whl/cu130"
+name = "pytorch-cu129"
+url = "https://download.pytorch.org/whl/cu129"
 explicit = true
