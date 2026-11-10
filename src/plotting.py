@@ -20,6 +20,18 @@ MODEL_COLORS: dict[str, str] = {
 }
 _DEFAULT_COLOR = "#BBBBBB"
 
+# One fixed colour per deep-learning architecture (notebooks 06c/06d/06e/06f), kept in a
+# separate dict from MODEL_COLORS so adding them can never change a classical-model colour
+# already used in the committed 05/05b/05c figures. Picked from the same qualitative family
+# (seaborn "deep") as MODEL_COLORS/SHAP_PANEL_COLOR/GAIN_PANEL_COLOR, using the hues none of
+# those already claim, so a DL bar is never visually confusable with a classical-ML or
+# SHAP/gain panel colour in the same figure.
+DL_MODEL_COLORS: dict[str, str] = {
+    "FNN": "#C44E52",   # red
+    "LSTM": "#937860",  # brown
+    "TCN": "#64B5CD",   # cyan
+}
+
 # Fixed panel colours for plot_feature_importance_comparison — one per
 # method, the same in every call regardless of which model is shown.
 SHAP_PANEL_COLOR = "#8172B3"   # muted purple
@@ -27,12 +39,13 @@ GAIN_PANEL_COLOR = "#CCB974"   # muted gold
 
 
 def _palette_for(labels) -> dict:
-    """Map each label to its fixed model colour; anything starting with
-    'Naive' collapses to the Naive colour, unknown labels get a neutral grey."""
+    """Map each label to its fixed model colour (classical in MODEL_COLORS, deep-learning
+    in DL_MODEL_COLORS); anything starting with 'Naive' collapses to the Naive colour,
+    unknown labels get a neutral grey."""
     out = {}
     for lab in labels:
         key = "Naive" if str(lab).startswith("Naive") else str(lab)
-        out[lab] = MODEL_COLORS.get(key, _DEFAULT_COLOR)
+        out[lab] = MODEL_COLORS.get(key, DL_MODEL_COLORS.get(key, _DEFAULT_COLOR))
     return out
 
 
@@ -138,7 +151,8 @@ def plot_roofline(
     return fig
 
 
-def plot_model_comparison(summary_df: pd.DataFrame, title: str = "Model comparison"):
+def plot_model_comparison(summary_df: pd.DataFrame, title: str = "Model comparison",
+                           palette: dict | None = None):
     """R²/MAPE side by side across models (notebook 05) — two panels
     rather than one chart, since R² (unitless, roughly [-1, 1]) and MAPE
     (a percentage, often well over 100% for heavy-tailed targets) sit on
@@ -147,10 +161,15 @@ def plot_model_comparison(summary_df: pd.DataFrame, title: str = "Model comparis
     and loses on the other — the recurring R²-vs-MAPE disagreement seen
     on both F-DATA and PM100 — is visible at a glance. `summary_df` is
     indexed by model name with "R2"/"MAPE" columns, the same frame
-    already built for the printed results table."""
+    already built for the printed results table.
+
+    `palette` is optional and overrides/extends the module's own fixed
+    colours (MODEL_COLORS/DL_MODEL_COLORS, which already cover
+    RandomForest/XGBoost/LightGBM/Naive and FNN/LSTM/TCN) for specific
+    model names, without disturbing every other call's default colours."""
     df = summary_df.reset_index()
     model_col = df.columns[0]
-    palette = _palette_for(df[model_col])
+    palette = {**_palette_for(df[model_col]), **(palette or {})}
     fig, axes = plt.subplots(1, 2, figsize=(11, 4))
     for ax, col, label in [(axes[0], "R2", "R²"), (axes[1], "MAPE", "MAPE (%)")]:
         sns.barplot(data=df, x=model_col, y=col, hue=model_col, palette=palette,
@@ -440,5 +459,63 @@ def plot_feature_correlation_heatmap(
         ax.axvline(n - 1, color="#222222", linewidth=2.0)
         for tick in (ax.get_xticklabels()[-1], ax.get_yticklabels()[-1]):
             tick.set_fontweight("bold")
+    fig.tight_layout()
+    return fig
+
+
+def plot_sequence_length_distribution(counts_by_dataset: dict, candidate_lengths: list,
+                                       chosen_length: int):
+    """Jobs-per-user distribution for each dataset (notebook 06's sequence-length
+    decision), log10-scaled on the x-axis since both datasets are heavily right-skewed (a
+    handful of users sit orders of magnitude above the median job count). Vertical reference
+    lines mark each candidate sequence length tested; the CHOSEN length is drawn solid in the
+    module's XGBoost colour, the rejected candidates dashed and grey, so the decision reads
+    directly off the real distribution rather than being asserted separately from it.
+    `counts_by_dataset` maps dataset name -> a pandas Series of jobs-per-user counts (as
+    returned by `.groupby(user_col).size()`)."""
+    fig, axes = plt.subplots(1, len(counts_by_dataset), figsize=(5.5 * len(counts_by_dataset), 4))
+    if len(counts_by_dataset) == 1:
+        axes = [axes]
+    for ax, (name, counts) in zip(axes, counts_by_dataset.items()):
+        sns.histplot(x=np.log10(counts.to_numpy()), bins=40, ax=ax,
+                     color=MODEL_COLORS["RandomForest"])
+        for n in candidate_lengths:
+            chosen = n == chosen_length
+            ax.axvline(np.log10(n), color=(MODEL_COLORS["XGBoost"] if chosen else "gray"),
+                       linestyle=("-" if chosen else "--"), linewidth=(2 if chosen else 1),
+                       alpha=(1.0 if chosen else 0.6),
+                       label=f"N={n}" + (" (chosen)" if chosen else ""))
+        ax.set_xlabel("log10(jobs per user)")
+        ax.set_ylabel("user count")
+        ax.set_title(f"{name} ({len(counts):,} users)")
+        ax.legend(fontsize=8)
+    fig.suptitle("Jobs-per-user distribution and candidate sequence lengths")
+    fig.tight_layout()
+    return fig
+
+
+def plot_lag1_autocorrelation(panels: dict):
+    """Lag-1 same-user target autocorrelation scatter (notebook 06's F-DATA
+    temporal-structure check): each point is one job's target value plotted against the
+    immediately preceding job's target value from the SAME user, log-log scale since the raw
+    targets are heavy-tailed. The dashed diagonal is the y=x reference (perfect carry-over from
+    one job to the next) -- the same "ideal line" visual language as `plot_predicted_vs_actual`,
+    re-purposed here for a same-user consecutive-job pair rather than a prediction pair.
+    `panels` maps panel title -> (y, y_lag1) raw-space, strictly-positive arrays (already
+    sampled down by the caller if the full population is large)."""
+    fig, axes = plt.subplots(1, len(panels), figsize=(5 * len(panels), 4.5))
+    if len(panels) == 1:
+        axes = [axes]
+    for ax, (title, (y, y_lag1)) in zip(axes, panels.items()):
+        sns.scatterplot(x=y_lag1, y=y, alpha=0.08, s=6, edgecolor="none",
+                         color=MODEL_COLORS["RandomForest"], ax=ax)
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        lims = [min(y.min(), y_lag1.min()), max(y.max(), y_lag1.max())]
+        ax.plot(lims, lims, "r--", linewidth=1)
+        ax.set_xlabel("previous job, same user (log scale)")
+        ax.set_ylabel("this job (log scale)")
+        ax.set_title(title)
+    fig.suptitle("Lag-1 same-user target autocorrelation (F-DATA)")
     fig.tight_layout()
     return fig

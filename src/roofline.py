@@ -143,7 +143,7 @@ def predict_pm100_power(
 
 
 # --- F-DATA: calibrated resource-utilization power model --------------------
-# A direct correlation check (EXPERIMENT_TRACKER.md, 2026-09-21) found avgpcon correlates
+# A direct correlation check (2026-09-21) found avgpcon correlates
 # 0.9990 with nnuma and 0.9993 with cnumat on a real check, an even
 # stronger starting relationship than PM100's power model had — but nnuma
 # and cnumat are themselves correlated 0.9996 with each other, tighter
@@ -171,7 +171,7 @@ def predict_pm100_power(
 # rate (raw rows, all 38 months): 88.55%, ranging 59.3%-99.8% by file.
 # Dropping cnumat here is an OLS-identifiability fix only; it does not
 # disqualify cnumat as a classical-ML Tier A/B feature candidate (see
-# the Tier A/B feature-vetting pass documented in EXPERIMENT_TRACKER.md).
+# the separate Tier A/B feature-vetting pass this project ran).
 #
 # UNIT-SCALE FINDING (2026-09-21, found by fitting on the real
 # full-scale data, not assumed): msza in raw bytes (up to ~3.0e10) next to

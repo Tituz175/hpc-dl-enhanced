@@ -106,8 +106,8 @@ FDATA_TARGETS: dict[str, str] = {
 # limit, not stated in that description.) It turns out to use an
 # unsigned-int sentinel for "no limit set" rather than a null: found
 # 2026-07-31 while scratch-timing notebook 05's SAMPLE_SIZE decision, when
-# it broke XGBoost/LightGBM's histogram binning (see EXPERIMENT_TRACKER.md
-# Data Gotchas). Verified against the 6-month dev slice: 99.5% of rows
+# it broke XGBoost/LightGBM's histogram binning. Verified against the
+# 6-month dev slice: 99.5% of rows
 # (2,882,158 / 2,897,734) sit exactly at 2**64 - 1; the rest have real
 # limits spanning ~1e9-3e10 (bytes) — a 10-order-of-magnitude range if the
 # sentinel is left mixed in raw.
@@ -141,9 +141,9 @@ def assert_mszl_sanitized(df: pd.DataFrame) -> None:
 
 # --- msza sentinel handling --------------------------------------------------
 # `msza` (memory allocated, Tier B) carries the same 2**64-1 sentinel as
-# `mszl` — flagged as a landmine in EXPERIMENT_TRACKER.md's Data Gotchas
-# (2026-09-04) when the mmszu-falls-back-to-msza rule was checked and found
-# to never actually fire, so the sentinel had caused no harm until now.
+# `mszl` -- found (2026-09-04) when the mmszu-falls-back-to-msza rule was
+# checked and found to never actually fire, so the sentinel had caused no
+# harm until now.
 # It matters here: the F-DATA power calibrated model (added 2026-09-21)
 # uses msza as a predictor, so it needs the same split-into-flag-plus-
 # sanitized-numeric treatment mszl already got, not a fresh design.
@@ -547,8 +547,8 @@ def load_fdata_no_embedding(paths: list[str]) -> pd.DataFrame:
 # what keeps Tier A genuinely submission-time-only.
 #
 # With only 1 of F-DATA's 38 months present (and a small dev sample), most
-# users won't have many prior jobs to compute this from yet — expect sparse/
-# noisy values until more months are loaded (see EXPERIMENT_TRACKER.md).
+# users won't have many prior jobs to compute this from yet -- expect sparse/
+# noisy values until more months are loaded.
 
 _ROLLING_CONFIG: dict[str, dict[str, str]] = {
     "fdata": {"user_col": "usr", "time_col": "adt"},
