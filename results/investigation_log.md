@@ -1,9 +1,9 @@
 # Investigation log: diagnostics with no persisted numeric artifact
 
-This logs real investigations that shaped decisions in `EXPERIMENT_TRACKER.md` but that
+This logs real investigations that shaped project decisions but that
 `results_ledger.csv` cannot carry a row for, because no script and/or no saved result exists
 to source a precise number from. Excluding them from the ledger (rather than guessing a
-number from memory or from rounded tracker prose) is the same discipline the ledger itself
+number from memory or from rounded prose elsewhere) is the same discipline the ledger itself
 uses elsewhere -- this file is where that discipline's casualties get written down instead of
 silently dropped.
 

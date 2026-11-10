@@ -705,7 +705,8 @@ EXCLUDED.append((
     "print 'tuning=0.0s' for every model (SKIP_TUNING=True reuses stored best_params from an earlier "
     "historical run); that earlier run's real tuning-cost output was overwritten when the notebook "
     "was re-executed with SKIP_TUNING on. Not recoverable from any committed notebook cell or joblib "
-    "-- only exists as rounded prose in EXPERIMENT_TRACKER.md, which is not an accepted source here."
+    "-- only exists as rounded prose in a personal, non-committed working log, which is not an "
+    "accepted source here."
 ))
 
 # --- F-DATA memory -- adopted (single headline fit; XGBoost's small-ensemble seed-instability is a
@@ -819,7 +820,8 @@ EXCLUDED.append((
     "cell prints 'tuning=0.0s' for every model (SKIP_TUNING_PM100=True reuses stored best_params "
     "from an earlier historical, pre-workstation-migration run); that run's real tuning-cost output "
     "no longer exists in the committed notebook. Not recoverable from any committed notebook cell "
-    "or joblib -- only rounded prose in EXPERIMENT_TRACKER.md, which is not an accepted source here."
+    "or joblib -- only rounded prose in a personal, non-committed working log, which is not an "
+    "accepted source here."
 ))
 
 # --- Analytical baselines (notebook 03), raw-space only, no seed / no log-space ---
@@ -884,6 +886,114 @@ VERIFIED.append((nbsrc("03_analytical_baselines.ipynb", "16,30"),
                   "recovered_from_notebook: transcribed from committed cell output (4 decimal "
                   "places); no calibration_df row count or log-space equivalent applies to these "
                   "physical-unit analytical models."))
+
+# ============================================================================
+# 5b. notebook06 DL sweep -> results/notebook06_sweep_result_{combo}_{arch}.csv
+#     Each file already matches the ledger's own column schema exactly (written that way by
+#     run_sweep_pair.py), one row per (space, metric) plus a best_lr row -- so these are
+#     appended directly, not recomputed/re-verified like the joblib-backed classical-ML rows
+#     above: no fitted model object or scaler was persisted per pair to replay predict()
+#     against, and the winning Optuna trial's own checkpoint IS the final fit (no separate
+#     full-train refit to re-derive), so there is nothing further to recompute here.
+# ============================================================================
+
+DL_SWEEP_COMBOS = [
+    ("fdata", "memory"), ("fdata", "duration"), ("fdata", "power"),
+    ("pm100", "duration"), ("pm100", "memory_c4"), ("pm100", "power"),
+]
+DL_SWEEP_ARCHS = ["FNN", "LSTM", "TCN"]
+DL_SWEEP_EXPECTED_COLUMNS = [
+    "dataset", "target", "model", "variant", "tree_method", "fit_rows",
+    "seed", "space", "metric", "value", "status", "source", "is_seed_sweep",
+]
+
+_dl_sweep_rows_added = 0
+for combo_dataset, combo_target in DL_SWEEP_COMBOS:
+    for arch in DL_SWEEP_ARCHS:
+        fname = f"notebook06_sweep_result_{combo_dataset}_{combo_target}_{arch}.csv"
+        fpath = RESULTS / fname
+        if not fpath.exists():
+            raise FileNotFoundError(f"Expected DL sweep result file missing: {fpath} -- "
+                                     f"the notebook 06c/06d/06e sweep is not complete for this pair.")
+        df = pd.read_csv(fpath)
+        if list(df.columns) != DL_SWEEP_EXPECTED_COLUMNS:
+            raise ValueError(f"{fname}'s columns {list(df.columns)} don't match the ledger's "
+                              f"own schema {DL_SWEEP_EXPECTED_COLUMNS} -- cannot append as-is.")
+        # dataset/target in the file are its own ground truth (sanity-checked against the
+        # filename, which encodes the same thing, rather than trusting either one alone).
+        file_dataset = df["dataset"].unique()
+        file_target = df["target"].unique()
+        if list(file_dataset) != [combo_dataset] or list(file_target) != [combo_target.replace("_c4", "")]:
+            raise ValueError(f"{fname}'s own dataset/target columns {file_dataset}/{file_target} "
+                              f"don't match what its filename encodes ({combo_dataset}/{combo_target})")
+        for row in df.to_dict("records"):
+            ROWS.append(row)
+            _dl_sweep_rows_added += 1
+
+VERIFIED.append((f"results/notebook06_sweep_result_*.csv (18 files, {_dl_sweep_rows_added} rows)",
+                  "appended as-is: each file already matches the ledger's own column schema, "
+                  "written directly by run_sweep_pair.py from the winning Optuna trial's own "
+                  "checkpoint evaluated on the held-out TEST split. NOT independently "
+                  "recomputed within this build -- no per-pair fitted model/scaler object or "
+                  "X_test was persisted to replay predict() against, unlike the joblib-backed "
+                  "classical-ML rows above. Every row's own 'source' field discloses the winning "
+                  "trial number, learning rate, and that fit_rows is tune_train (80% of the real "
+                  "train split), not the full train split."))
+
+
+# ============================================================================
+# 5c. notebook06 same-features classical-ML control ->
+#     results/notebook06_same_features_control_{combo}_{model}.csv
+#     A DIFFERENT thing from both the adopted classical-ML rows (section 5 above, which use
+#     classical ML's own feature set and split) and the DL sweep rows (section 5b, a different
+#     architecture): this control fits LightGBM/XGBoost on the DL feature set and the DL
+#     tune_train split, isolating whether the feature-set change alone (not architecture)
+#     explains part of the DL-vs-classical gap. variant="same_features_control" and
+#     status="diagnostic" on every row of this section keep it from ever being confused with
+#     either of the other two.
+# ============================================================================
+
+_CONTROL_COMBO_MODELS = {
+    ("fdata", "power"): ["LightGBM"], ("fdata", "duration"): ["LightGBM"],
+    ("fdata", "memory"): ["LightGBM"],
+    ("pm100", "power"): ["LightGBM", "XGBoost_exact"],
+    ("pm100", "duration"): ["LightGBM", "XGBoost_exact"],
+    ("pm100", "memory"): ["LightGBM", "XGBoost_exact"],
+}
+_CONTROL_FILE_COMBO = {
+    ("fdata", "power"): "fdata_power", ("fdata", "duration"): "fdata_duration",
+    ("fdata", "memory"): "fdata_memory", ("pm100", "power"): "pm100_power",
+    ("pm100", "duration"): "pm100_duration", ("pm100", "memory"): "pm100_memory_c4",
+}
+_control_rows_added = 0
+for (ctrl_dataset, ctrl_target), ctrl_models in _CONTROL_COMBO_MODELS.items():
+    file_combo = _CONTROL_FILE_COMBO[(ctrl_dataset, ctrl_target)]
+    for ctrl_model in ctrl_models:
+        fname = f"notebook06_same_features_control_{file_combo}_{ctrl_model}.csv"
+        fpath = RESULTS / fname
+        if not fpath.exists():
+            raise FileNotFoundError(f"Expected same-features-control result file missing: "
+                                     f"{fpath} -- 06f_dl_comparison.ipynb's control section has not been run.")
+        df = pd.read_csv(fpath)
+        if list(df.columns) != DL_SWEEP_EXPECTED_COLUMNS:
+            raise ValueError(f"{fname}'s columns {list(df.columns)} don't match the ledger's "
+                              f"own schema {DL_SWEEP_EXPECTED_COLUMNS} -- cannot append as-is.")
+        if (df["variant"] != "same_features_control").any() or (df["status"] != "diagnostic").any():
+            raise ValueError(f"{fname} has a row with variant != 'same_features_control' or "
+                              f"status != 'diagnostic' -- the labeling that keeps these rows "
+                              f"from being confused with adopted/DL-sweep rows is not intact.")
+        for row in df.to_dict("records"):
+            ROWS.append(row)
+            _control_rows_added += 1
+
+VERIFIED.append((f"results/notebook06_same_features_control_*.csv ({_control_rows_added} rows)",
+                  "appended as-is: each file already matches the ledger's own column schema, "
+                  "written directly by 06f_dl_comparison.ipynb's same-features-control cells. Every row's "
+                  "variant is 'same_features_control' and status is 'diagnostic' (asserted "
+                  "above, not just hoped for), so these rows can never be confused with the "
+                  "adopted classical-ML rows (different feature set/split) or the DL sweep "
+                  "rows (different architecture) also in this ledger."))
+
 
 # ============================================================================
 # 6. Known, disclosed exclusion: F-DATA power XGBoost hist bug's failed-fit R2

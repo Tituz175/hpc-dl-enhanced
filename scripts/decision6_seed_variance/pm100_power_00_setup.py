@@ -11,7 +11,7 @@ SEED = 0
 # ===== next cell =====
 
 PM100_PATH = "../data/raw/pm100/pm100_job_table.parquet"
-PM100_TARGET_COL = "power_mean"   # derived scalar -- see Step 14, not a raw column
+PM100_TARGET_COL = "power_mean"   # derived scalar (mean of node_power_consumption's per-job time series), not a raw column
 PM100_TUNE_TRAIN_FRAC = 0.8       # same chronological tune/val carve-out pattern as Part 1
 
 print(f"PM100_TARGET_COL={PM100_TARGET_COL}  N_TRIALS={N_TRIALS}")

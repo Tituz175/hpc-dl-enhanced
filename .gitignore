@@ -63,3 +63,19 @@ writing/thesis_draft_notes.docx
 # Curated results ledger -- meant to be committed and reviewed, unlike the
 # raw/derived-data CSVs the blanket *.csv rule above is for
 !results/*.csv
+
+# Optuna's persistent per-pair study storage (SQLite) -- large, regenerable, not reviewed
+results/optuna_studies/*.db
+
+# notebook06 development/debug artifacts -- scratch probes from building the DL sweep
+# (GPU concurrency timing, single/multi-epoch trial runs, the pre-sweep step-2 gate check,
+# per-trial per-epoch training logs), never read back by any notebook and superseded by the
+# real per-pair results in results/notebook06_sweep_result_*.csv
+results/notebook06_concurrency_gpu*.txt
+results/notebook06_*multiepoch_trial*.csv
+results/notebook06_phase1_epoch_timing*.csv
+results/notebook06_step2*gate*.csv
+results/notebook06_sweep_epochlog_*.csv
+
+# Scratch holding area for pre-commit cleanup -- reviewed, never committed
+_to_delete/

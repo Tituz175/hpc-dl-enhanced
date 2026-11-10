@@ -96,7 +96,7 @@ print(f"F-DATA Tier A: {len(train_tier_a.columns)} columns | "
 embed_full = pd.concat(
     [pd.read_parquet(f, columns=["embedding"]) for f in fdata_files], ignore_index=True
 )
-embed_train = embed_full.loc[train_sample.index]   # tuning sample (PCA fit + Step 10 tuning)
+embed_train = embed_full.loc[train_sample.index]   # tuning sample (PCA fit + hyperparameter tuning)
 embed_test = embed_full.loc[test_sample.index]
 
 pca_check = features.compute_embedding_explained_variance(embed_train)
@@ -108,7 +108,7 @@ embedding_pca = features.fit_fdata_embedding_pca(embed_train, n_components=n_com
 embed_train_pca = features.transform_fdata_embedding(embed_train, embedding_pca)
 embed_test_pca = features.transform_fdata_embedding(embed_test, embedding_pca)
 
-# Full train/test splits, for the final fit (Step 12).
+# Full train/test splits, for the final fit.
 embed_train_full = embed_full.loc[train_df.index]
 embed_test_full = embed_full.loc[test_df.index]
 del embed_full
@@ -149,7 +149,7 @@ for k, v in naive_metrics.items():
 # ===== next cell =====
 
 # add_user_rolling_stat writes a fixed column name, so each extra call is renamed
-# before merging. `rolling_col` (window=5) is already on `fdata` from Step 3.
+# before merging. `rolling_col` (window=5) is already on `fdata` from the earlier rolling-stat feature step.
 ROLLING_COL_W20 = f"{TARGET_COL}_user_rolling_mean_w20"
 ROLLING_COL_W50 = f"{TARGET_COL}_user_rolling_mean_w50"
 _roll20 = features.add_user_rolling_stat(fdata, "fdata", TARGET_COL, window=20)[rolling_col].rename(ROLLING_COL_W20)

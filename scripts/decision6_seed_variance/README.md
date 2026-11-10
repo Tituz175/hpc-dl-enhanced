@@ -4,13 +4,13 @@ This work repeats each already-tuned model's final fit across multiple random se
 generally, 3 for F-DATA RandomForest specifically, given its cost) to test whether a "best
 model" claim is robust to seed-to-seed stochasticity, rather than an artifact of a single
 lucky/unlucky fit -- followed by paired significance testing on the resulting winner
-(notebook `08`). This README and the scripts below are written to stand on their own;
-`EXPERIMENT_TRACKER.md` (a personal/gitignored working file, not part of this repo's committed
-history) has additional day-by-day narrative detail but is not required to understand any of this.
+(notebook `08`). This README and the scripts below are written to stand on their own; a
+personal, gitignored working log kept outside this repo has additional day-by-day narrative
+detail but is not required to understand any of this.
 
 These are the scripts that produced every result documented in
 `notebooks/05d_seed_variance.ipynb`, plus the two
-"Phase 3" pipeline rebuilds (F-DATA power, PM100 duration) that produced the canonical
+classical-ML pipeline rebuilds (F-DATA power, PM100 duration) that produced the canonical
 single-seed numbers baked into `notebooks/05c_classical_ml_power_duration.ipynb`. They were
 moved here from a session scratch directory (`/tmp/...`) with their hardcoded paths fixed;
 nothing about what they compute has changed. Seed-level R² values, along with every other
@@ -71,8 +71,8 @@ cd "$PROJ/notebooks"
 ```
 
 (`SCRIPT_DIR` is this directory, `PROJ` is two levels up -- the repo root -- computed at
-run time from wherever the wrapper actually lives, not written in as a literal
-`/home/bizon/...` path.) This is why the wrappers can be run with any absolute or relative
+run time from wherever the wrapper actually lives, not written in as a literal, user-specific
+absolute path.) This is why the wrappers can be run with any absolute or relative
 path to the script itself, from any cwd, and still work after a `git clone` to a different
 machine or directory. Keep this pattern if you copy it elsewhere.
 
@@ -139,12 +139,12 @@ uv run python scripts/build_results_ledger.py
 
 | Combination | Source |
 |---|---|
-| F-DATA power | Fresh real 50-trial Optuna search, run as part of the Phase 3 pipeline rebuild (2026-09-26), saved to `data/interim/fdata_power_{rf,xgb,lgbm}_result.joblib`. XGBoost tuned with `tree_method="hist"`; final fit uses `"exact"`. |
+| F-DATA power | Fresh real 50-trial Optuna search, run as part of a classical-ML pipeline rebuild (2026-09-26), saved to `data/interim/fdata_power_{rf,xgb,lgbm}_result.joblib`. XGBoost tuned with `tree_method="hist"`; final fit uses `"exact"`. |
 | F-DATA duration (Result 2) | `notebooks/05_classical_ml_baselines.ipynb` cell 25's committed output (`_STORED_BEST_PARAMS`, `SKIP_TUNING=True`) -- reuses the winners from the full-scale Result 1 run committed in `d48ac0c`, refit on the Result 2 feature set (extended rolling windows) without re-tuning. |
 | F-DATA memory | `notebooks/05b_classical_ml_memory.ipynb` cell 30's committed output -- real 50-trial Optuna, no `SKIP_TUNING`. |
 | PM100 power | `notebooks/05_classical_ml_baselines.ipynb` cell 84's committed output (`SKIP_TUNING_PM100=True`), reusing a stored search. |
 | PM100 memory (clean-4) | `notebooks/05b_classical_ml_memory.ipynb` cell 101's `_C4_BEST_PARAMS` -- real 50-trial Optuna re-tune specific to the 4-feature clean set (after `mem_req` was deliberately dropped). |
-| PM100 duration | Fresh real 50-trial Optuna search, run as part of the Phase 3 pipeline rebuild, saved to `data/interim/pm100_duration_{rf,xgb,lgbm}_result.joblib`. `tree_method="hist"` confirmed better than `"exact"` for XGBoost here (opposite of F-DATA power). |
+| PM100 duration | Fresh real 50-trial Optuna search, run as part of the same classical-ML pipeline rebuild, saved to `data/interim/pm100_duration_{rf,xgb,lgbm}_result.joblib`. `tree_method="hist"` confirmed better than `"exact"` for XGBoost here (opposite of F-DATA power). |
 
 Exact `best_params` dicts are printed by each combination's `*_00_setup.py` / seed script and
-are also quoted in full in the corresponding section of `EXPERIMENT_TRACKER.md`.
+are also quoted in full in the personal working log mentioned above.
